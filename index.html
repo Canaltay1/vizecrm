@@ -1035,12 +1035,13 @@ async function openPanel(id){
   document.getElementById('detail-panel').classList.add('open');
   document.getElementById('panel-body').innerHTML='<div style="padding:40px;text-align:center;color:var(--text3)">Yükleniyor...</div>';
 
-  let notes=[],calls=[],salesReps=[];
+  let notes=[],calls=[],salesReps=[],docMap={};
   try{
     const res=await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'getCustomerDetail',customerId:id,token:CU.token})});
     const d=await res.json();
     notes=(d.notes||[]).map(n=>({text:n.text,author:n.author||'—',date:fmtDT(n.created_at)}));
     calls=(d.calls||[]).map(cl=>({caller:cl.caller||'—',date:fmtDT(cl.created_at),result:cl.result,note:cl.note}));
+    (d.documents||[]).forEach(x=>docMap[x.doc_name]=x.status);
   }catch(e){}
   if(CU.role==='management'){
     try{
@@ -1133,11 +1134,17 @@ async function openPanel(id){
   <div class="ps">
     <div class="ps-head"><div class="ps-title">Belgeler</div></div>
     <div class="ps-body" style="display:flex;flex-direction:column;gap:6px">
-    ${['Pasaport','Banka Ekstresi','Maaş Bordrosu','SGK Kaydı'].map((d,i)=>`
+    ${['Pasaport','Banka Ekstresi','Maaş Bordrosu','SGK Kaydı'].map(d=>{
+      const st=docMap[d]||'Bekleniyor';
+      return `
       <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:var(--surface2);border-radius:7px;border:1px solid var(--border)">
         <span style="font-size:12px;color:var(--text)">📄 ${d}</span>
-        <span class="badge ${si>9?'b-completed':i<2?'b-completed':'b-docs-pending'}">${si>9?'Onaylandı':i<2?'Yüklendi':'Bekleniyor'}</span>
-      </div>`).join('')}
+        <select class="sel" style="font-size:11px;padding:3px 8px;width:auto" onchange="updateDocStatus('${c.id}','${d}',this.value)">
+          <option value="Bekleniyor" ${st==='Bekleniyor'?'selected':''}>⏳ Bekleniyor</option>
+          <option value="Yüklendi" ${st==='Yüklendi'?'selected':''}>📤 Yüklendi</option>
+          <option value="Onaylandı" ${st==='Onaylandı'?'selected':''}>✓ Onaylandı</option>
+        </select>
+      </div>`;}).join('')}
     </div>
   </div>
 
@@ -1258,6 +1265,17 @@ async function addRefund(id){
     await loadCustomers();
     await openPanel(id);
     toast('✓ İade kaydedildi','red');
+  }catch(e){
+    toast('Bağlantı hatası','red');
+  }
+}
+
+async function updateDocStatus(id,docName,status){
+  try{
+    const res=await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'updateDocStatus',customerId:id,docName,docStatus:status,token:CU.token})});
+    const d=await res.json();
+    if(!d.success){toast('Hata: '+JSON.stringify(d.error||'Kaydedilemedi'),'red');return;}
+    toast('✓ '+docName+': '+status,'green');
   }catch(e){
     toast('Bağlantı hatası','red');
   }
