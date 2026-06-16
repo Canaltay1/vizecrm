@@ -1054,13 +1054,14 @@ async function openPanel(id){
   document.getElementById('detail-panel').classList.add('open');
   document.getElementById('panel-body').innerHTML='<div style="padding:40px;text-align:center;color:var(--text3)">Yükleniyor...</div>';
 
-  let notes=[],calls=[],salesReps=[],docMap={},history=[];
+  let notes=[],calls=[],salesReps=[],docMap={},documents=[],history=[];
   try{
     const res=await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'getCustomerDetail',customerId:id,token:CU.token})});
     const d=await res.json();
     notes=(d.notes||[]).map(n=>({text:n.text,author:n.author||'—',date:fmtDT(n.created_at)}));
     calls=(d.calls||[]).map(cl=>({caller:cl.caller||'—',date:fmtDT(cl.created_at),result:cl.result,note:cl.note}));
-    (d.documents||[]).forEach(x=>docMap[x.doc_name]=x.status);
+    documents=(d.documents||[]);
+    documents.forEach(x=>docMap[x.doc_name]=x.status);
     history=(d.history||[]).map(h=>({l:h.status,m:fmtDT(h.changed_at)+' · '+(h.changed_by||'—')}));
   }catch(e){}
   if(CU.role==='management'){
