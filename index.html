@@ -534,34 +534,41 @@ const MONTHS=['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas
 const RCOLS={'Ece Aydın':'#2563EB','Mehmet Kaya':'#D97706','Ayşe Türk':'#059669','Burak Sarı':'#DC2626','Ceren Yılmaz':'#0891B2','Onur Demir':'#7C3AED','Zehra Kaya':'#0D9488'};
 const notesStore={},callStore={};
 
-let customers=[
-  {id:'VZ-2024-0031',name:'Ahmet Yılmaz',phone:'+90 532 111 22 33',email:'ahmet@email.com',country:'🇩🇪 Almanya',visa:'Schengen Turistik',rep:'Ece Aydın',ops:'Samet Özcan',status:'Sonuç Bekleniyor',fee:72000,prepay:36000,days:18,lastMod:'10 Haz 2024 14:23',apptDate:'2024-06-10'},
-  {id:'VZ-2024-0032',name:'Fatma Kaya',phone:'+90 542 222 33 44',email:'fatma@email.com',country:'🇬🇧 İngiltere',visa:'Çalışma Vizesi',rep:'Mehmet Kaya',ops:'Samet Özcan',status:'Randevu Aranıyor',fee:85000,prepay:50000,days:9,lastMod:'09 Haz 2024 10:05',apptDate:''},
-  {id:'VZ-2024-0033',name:'Emre Demir',phone:'+90 553 333 44 55',email:'emre@email.com',country:'🇩🇪 Almanya',visa:'Schengen Turistik',rep:'Ece Aydın',ops:'Samet Özcan',status:'Belge Bekleniyor',fee:65000,prepay:30000,days:3,lastMod:'08 Haz 2024 09:30',apptDate:''},
-  {id:'VZ-2024-0034',name:'Seda Arslan',phone:'+90 505 444 55 66',email:'seda@email.com',country:'🇳🇱 Hollanda',visa:'Aile Birleşimi',rep:'Ayşe Türk',ops:'Samet Özcan',status:'Belgeler Tamam',fee:95000,prepay:95000,days:7,lastMod:'07 Haz 2024 16:45',apptDate:''},
-  {id:'VZ-2024-0035',name:'Mert Çelik',phone:'+90 516 555 66 77',email:'mert@email.com',country:'🇫🇷 Fransa',visa:'Schengen Turistik',rep:'Burak Sarı',ops:'Samet Özcan',status:'Başvuru Yapıldı',fee:68000,prepay:40000,days:12,lastMod:'06 Haz 2024 11:20',apptDate:'2024-06-05'},
-  {id:'VZ-2024-0036',name:'Elif Şahin',phone:'+90 532 666 77 88',email:'elif@email.com',country:'🇩🇪 Almanya',visa:'Çalışma Vizesi',rep:'Ece Aydın',ops:'Samet Özcan',status:'Randevu Alındı',fee:110000,prepay:55000,days:5,lastMod:'05 Haz 2024 13:10',apptDate:'2024-06-18'},
-  {id:'VZ-2024-0037',name:'Cem Yıldız',phone:'+90 542 777 88 99',email:'cem@email.com',country:'🇬🇧 İngiltere',visa:'Öğrenci Vizesi',rep:'Mehmet Kaya',ops:'Samet Özcan',status:'Yeni Kayıt',fee:55000,prepay:0,days:1,lastMod:'10 Haz 2024 08:00',apptDate:''},
-  {id:'VZ-2024-0038',name:'Aylin Öztürk',phone:'+90 553 888 99 00',email:'aylin@email.com',country:'🇩🇪 Almanya',visa:'Schengen Turistik',rep:'Ece Aydın',ops:'Samet Özcan',status:'Sonra Ara',fee:72000,prepay:0,days:2,lastMod:'09 Haz 2024 15:30',apptDate:''},
-  {id:'VZ-2024-0039',name:'Kerem Aydın',phone:'+90 505 111 33 55',email:'kerem@email.com',country:'🇺🇸 Amerika',visa:'Turist',rep:'Ayşe Türk',ops:'Samet Özcan',status:'Tamamlandı',fee:88000,prepay:88000,days:0,lastMod:'01 Haz 2024 10:00',apptDate:'2024-05-20'},
-  {id:'VZ-2024-0040',name:'Büşra Güneş',phone:'+90 516 222 44 66',email:'busra@email.com',country:'🇳🇱 Hollanda',visa:'Schengen Turistik',rep:'Burak Sarı',ops:'Samet Özcan',status:'Ulaşılamıyor',fee:62000,prepay:30000,days:8,lastMod:'03 Haz 2024 09:15',apptDate:''},
-  {id:'VZ-2024-0041',name:'Tolga Koç',phone:'+90 532 333 55 77',email:'tolga@email.com',country:'🇫🇷 Fransa',visa:'Çalışma Vizesi',rep:'Ece Aydın',ops:'Samet Özcan',status:'Sonuç Bekleniyor',fee:90000,prepay:45000,days:22,lastMod:'01 Haz 2024 17:00',apptDate:'2024-06-08'},
-  {id:'VZ-2024-0042',name:'Merve Doğan',phone:'+90 542 444 66 88',email:'merve@email.com',country:'🇩🇪 Almanya',visa:'Aile Birleşimi',rep:'Mehmet Kaya',ops:'Samet Özcan',status:'İlgilenmiyor',fee:98000,prepay:0,days:11,lastMod:'02 Haz 2024 12:40',apptDate:''},
-  {id:'VZ-2024-0043',name:'Pınar Arslan',phone:'+90 532 999 11 22',email:'pinar@email.com',country:'🇩🇪 Almanya',visa:'Çalışma Vizesi',rep:'Ceren Yılmaz',ops:'Samet Özcan',status:'Ödeme Alındı',fee:78000,prepay:40000,days:4,lastMod:'07 Haz 2024 11:00',apptDate:''},
-  {id:'VZ-2024-0044',name:'Kaan Öztürk',phone:'+90 542 888 22 33',email:'kaan@email.com',country:'🇬🇧 İngiltere',visa:'Öğrenci Vizesi',rep:'Onur Demir',ops:'Samet Özcan',status:'Belge Bekleniyor',fee:65000,prepay:35000,days:6,lastMod:'06 Haz 2024 14:30',apptDate:''},
-  {id:'VZ-2024-0045',name:'Selin Çetin',phone:'+90 505 777 33 44',email:'selin@email.com',country:'🇳🇱 Hollanda',visa:'Schengen Turistik',rep:'Zehra Kaya',ops:'Samet Özcan',status:'Randevu Aranıyor',fee:58000,prepay:30000,days:5,lastMod:'05 Haz 2024 10:20',apptDate:''},
-];
-notesStore['VZ-2024-0031']=[{text:'Müşteri randevu tarihi konusunda endişeli. Haftalık bilgilendirme yapılıyor.',author:'Samet Özcan',date:'08 Haz 2024 10:15'},{text:'Pasaport geçerlilik süresi 6 ay — sorun yok.',author:'Ece Aydın',date:'05 Haz 2024 14:30'}];
-callStore['VZ-2024-0038']=[{caller:'Ece Aydın',date:'07 Haz 2024 10:00',result:'cevapsiz',note:''},{caller:'Ece Aydın',date:'08 Haz 2024 14:30',result:'ulasildi',note:'Teklif beğendi, düşünecek dedi'},{caller:'Ece Aydın',date:'09 Haz 2024 11:00',result:'sonra_ara',note:'Eşiyle konuşacak'}];
-callStore['VZ-2024-0040']=[{caller:'Burak Sarı',date:'06 Haz 2024 10:00',result:'cevapsiz',note:''},{caller:'Burak Sarı',date:'07 Haz 2024 11:00',result:'cevapsiz',note:''},{caller:'Burak Sarı',date:'08 Haz 2024 09:30',result:'cevapsiz',note:'3. aramada da cevap yok'}];
-let filtered=[...customers];
+let customers=[];
+let filtered=[];
+
+function fmtDT(iso){
+  if(!iso)return'—';
+  const d=new Date(iso);
+  return d.getDate()+' '+MONTHS[d.getMonth()]+' '+d.getFullYear()+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+}
+
+async function loadCustomers(){
+  try{
+    const res=await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'getCustomers',token:CU.token})});
+    const data=await res.json();
+    const rows=data.customers||[];
+    customers=rows.map(r=>({
+      id:r.id,name:r.name,phone:r.phone,email:r.email,country:r.country,
+      visa:r.visa_type,rep:r.rep_name||r.sales_rep_username||'—',ops:'',
+      status:r.status,fee:r.fee||0,prepay:r.prepay||0,
+      days:r.updated_at?Math.max(0,Math.floor((Date.now()-new Date(r.updated_at).getTime())/86400000)):0,
+      lastMod:fmtDT(r.updated_at),
+      apptDate:r.appt_date||''
+    }));
+    filtered=[...customers];
+  }catch(e){
+    console.error('loadCustomers hatası:',e);
+    customers=[];filtered=[];
+  }
+}
 
 function initials(n){return(n||'').split(' ').map(x=>x[0]).join('').slice(0,2).toUpperCase();}
 function nowStr(){const n=new Date();return n.getDate()+' '+MONTHS[n.getMonth()]+' 2024 '+String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');}
 function fmtDate(d){if(!d)return'';const[y,m,day]=d.split('-');return day+' '+MONTHS[parseInt(m)-1]+' '+y;}
 function calcR(){const f=parseInt(document.getElementById('nm-fee').value)||0,p=parseInt(document.getElementById('nm-pre').value)||0;document.getElementById('nm-rem').value=Math.max(0,f-p)||'';}
 
-function getVis(){if(CU.role==='sales')return filtered.filter(c=>c.rep===CU.repName);if(CU.role==='ops')return filtered.filter(c=>c.ops===CU.name);return filtered;}
+function getVis(){return filtered;}
 
 function toast(msg,type='blue'){
   const wrap=document.getElementById('toast-wrap');
@@ -621,7 +628,7 @@ async function initApp(){
   const av=document.getElementById('sb-av');
   av.textContent=initials(CU.name);av.style.background=CU.color;av.style.color='#fff';
   document.getElementById('sb-name').textContent=CU.name;
-  document.getElementById('sb-role').textContent={management:'Yönetici',sales:'Satış Temsilcisi',ops:'Operasyon Uzmanı'}[CU.role];
+  document.getElementById('sb-role').textContent={management:'Yönetici',sales:'Satış Temsilcisi',ops:'Operasyon Uzmanı',evrak:'Evrak Sorumlusu',randevu:'Randevu Sorumlusu'}[CU.role];
   const isM=CU.role==='management';
   document.getElementById('sb-nav').innerHTML=`
     <div class="sb-sec">Ana Menü</div>
@@ -634,7 +641,7 @@ async function initApp(){
     <div class="tb-search"><span>🔍</span><input placeholder="Müşteri ara..." oninput="gSearch(this.value)"></div>
     <button class="btn btn-primary" onclick="openModal()">+ Yeni Müşteri</button>
   `;
-  filtered=[...customers];
+  await loadCustomers();
   isM?await showPage('dashboard'):await showPage('customers');
 }
 
@@ -987,7 +994,7 @@ function openPanel(id){
     si>=12?{l:'Başvuru yapıldı',m:'10 Haz 2024 · '+c.ops}:null,
   ].filter(Boolean);
 
-  const qBtns=['Sonra Ara','Ulaşılamıyor','İlgilenmiyor','İletişime Geçildi','Teklif Gönderildi','Ödeme Alındı','Randevu Aranıyor','Tamamlandı','İptal']
+  const qBtns=['Sonra Ara','Ulaşılamıyor','İlgilenmiyor','İletişime Geçildi','Teklif Gönderildi','Satış Kapatıldı','Ödeme Alındı','Belge Bekleniyor','Belgeler Tamam','Randevu Aranıyor','Randevu Alındı','Başvuru Yapıldı','Sonuç Bekleniyor','Tamamlandı','İptal']
     .map(s=>`<button class="qs-btn ${c.status===s?'active':''}" onclick="moveStatus('${c.id}','${s}')">${s}</button>`).join('');
 
   document.getElementById('panel-body').innerHTML=`
@@ -1164,7 +1171,20 @@ function deleteCustomer(id, name){
 }
 
 function saveAppt(id){const c=customers.find(x=>x.id===id);if(!c)return;const v=document.getElementById('ap-'+id)?.value;c.apptDate=v||'';c.lastMod=nowStr();openPanel(id);renderRows();toast(v?'📅 Randevu: '+fmtDate(v):'Tarih temizlendi','blue');}
-async function moveStatus(id,ns){const c=customers.find(x=>x.id===id);if(!c)return;c.status=ns;c.days=0;c.lastMod=nowStr();openPanel(id);renderRows();toast('✓ Aşama: '+ns,'green');}
+async function moveStatus(id,ns){
+  try{
+    const res=await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'updateCustomerStatus',customerId:id,newStatus:ns,token:CU.token})});
+    const d=await res.json();
+    if(!d.success){toast('Hata: '+(d.error||'İşlem yapılamadı'),'red');return;}
+    await loadCustomers();
+    closePanel();
+    if(document.getElementById('cust-tbody'))renderRows();
+    if(document.getElementById('kanban'))renderPipeline();
+    toast('✓ Aşama: '+ns,'green');
+  }catch(e){
+    toast('Bağlantı hatası','red');
+  }
+}
 function markPaid(id){const c=customers.find(x=>x.id===id);if(!c)return;c.prepay=c.fee;c.lastMod=nowStr();openPanel(id);renderRows();toast('✓ Kalan ödeme tahsil edildi','green');}
 function addCall(id){
   const r=document.getElementById('cl-r-'+id)?.value,nt=(document.getElementById('cl-n-'+id)?.value||'').trim();
@@ -1190,18 +1210,26 @@ function closePanel(){document.getElementById('overlay').classList.remove('open'
 function openModal(){document.getElementById('add-modal').classList.add('open');}
 function closeModal(){document.getElementById('add-modal').classList.remove('open');}
 
-let nextNum=46;
-function addCustomer(){
+async function addCustomer(){
   const name=document.getElementById('nm-name').value.trim(),phone=document.getElementById('nm-phone').value.trim();
   if(!name||!phone){toast('Ad ve telefon zorunludur','red');return;}
   const fee=parseInt(document.getElementById('nm-fee').value)||65000,pre=parseInt(document.getElementById('nm-pre').value)||0;
-  const rep=CU.role==='sales'?CU.repName:document.getElementById('nm-rep').value;
-  const dt=nowStr();
-  const nc={id:'VZ-2024-0'+nextNum++,name,phone,email:document.getElementById('nm-email').value,country:document.getElementById('nm-country').value,visa:document.getElementById('nm-visa').value,rep,ops:'Samet Özcan',status:'Yeni Kayıt',fee,prepay:pre,days:0,lastMod:dt,apptDate:''};
-  customers.unshift(nc);filtered=[...customers];
-  closeModal();renderRows();
-  toast('✓ '+name+' eklendi — '+nc.id,'green');
-  ['nm-name','nm-phone','nm-email','nm-fee','nm-pre','nm-rem'].forEach(i=>{const el=document.getElementById(i);if(el)el.value='';});
+  const email=document.getElementById('nm-email').value.trim();
+  const country=document.getElementById('nm-country').value;
+  const visa_type=document.getElementById('nm-visa').value;
+  try{
+    const res=await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'addCustomer',name,phone,email,country,visa_type,fee,prepay:pre,token:CU.token})});
+    const d=await res.json();
+    if(!d.success){toast('Hata: '+(d.error||'Eklenemedi'),'red');return;}
+    await loadCustomers();
+    closeModal();
+    if(document.getElementById('cust-tbody'))renderRows();
+    if(document.getElementById('kanban'))renderPipeline();
+    toast('✓ '+name+' eklendi — '+d.id+' ('+d.assignedTo+'\'a atandı)','green');
+    ['nm-name','nm-phone','nm-email','nm-fee','nm-pre','nm-rem'].forEach(i=>{const el=document.getElementById(i);if(el)el.value='';});
+  }catch(e){
+    toast('Bağlantı hatası','red');
+  }
 }
 </script>
 <style>
