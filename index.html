@@ -1175,7 +1175,7 @@ async function moveStatus(id,ns){
   try{
     const res=await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'updateCustomerStatus',customerId:id,newStatus:ns,token:CU.token})});
     const d=await res.json();
-    if(!d.success){toast('Hata: '+(d.error||'İşlem yapılamadı'),'red');return;}
+    if(!d.success){toast('Hata: '+JSON.stringify(d.error||'İşlem yapılamadı'),'red');return;}
     await loadCustomers();
     closePanel();
     if(document.getElementById('cust-tbody'))renderRows();
@@ -1220,7 +1220,7 @@ async function addCustomer(){
   try{
     const res=await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'addCustomer',name,phone,email,country,visa_type,fee,prepay:pre,token:CU.token})});
     const d=await res.json();
-    if(!d.success){toast('Hata: '+(d.error||'Eklenemedi'),'red');return;}
+    if(!d.success){toast('Hata: '+JSON.stringify(d.error||'Eklenemedi'),'red');return;}
     await loadCustomers();
     closeModal();
     if(document.getElementById('cust-tbody'))renderRows();
