@@ -845,11 +845,7 @@ async function renderUsers(){
         ${CU.superAdmin?`<button class="btn btn-danger btn-sm" onclick="deleteUser('${u.username}')">🗑 Sil</button>`:''}
       </div>
     </div>`;
-  }).join('')tPw('${u.username}')">🔑 Şifre</button>
-        <button class="btn btn-amber btn-sm" onclick="resetPw('${u.username}')">🔄 Sıfırla</button>
-        ${CU.superAdmin?`<button class="btn btn-danger btn-sm" onclick="deleteUser('${u.username}')">🗑 Sil</button>`:''}
-      </div>
-    </div>`;}).join('')}
+  }).join('')}
   </div>`;
 }
 async function editPw(un){
