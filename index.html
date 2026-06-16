@@ -579,9 +579,53 @@ function toast(msg,type='blue'){
   setTimeout(()=>{t.style.opacity='0';t.style.transition='opacity .3s';setTimeout(()=>t.remove(),300);},3000);
 }
 
-window.addEventListener('load', function() {
+function mapUser(raw,token){
+  return {
+    username: raw.username, password: raw.password_hash, name: raw.name,
+    role: raw.role, color: raw.color || '#2563EB', repName: raw.rep_name,
+    id: raw.id, superAdmin: raw.super_admin || false, token
+  };
+}
+
+let idleTimer=null;
+const IDLE_LIMIT_MS=5*60*1000;
+function resetIdleTimer(){
+  if(idleTimer)clearTimeout(idleTimer);
+  idleTimer=setTimeout(()=>{
+    if(CU){
+      doLogout();
+      toast('5 dakika hareketsizlik nedeniyle oturum sonlandırıldı','amber');
+    }
+  },IDLE_LIMIT_MS);
+}
+['mousemove','keydown','click','scroll','touchstart'].forEach(evt=>{
+  document.addEventListener(evt, ()=>{ if(CU) resetIdleTimer(); });
+});
+
+async function restoreSession(){
+  const token=localStorage.getItem('vizecrm_token');
+  if(!token)return false;
+  try{
+    const res=await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'validateSession',token})});
+    const d=await res.json();
+    if(!res.ok||!d.user){localStorage.removeItem('vizecrm_token');return false;}
+    CU=mapUser(d.user,token);
+    return true;
+  }catch(e){
+    return false;
+  }
+}
+
+window.addEventListener('load', async function() {
   if (!USE_SUPABASE || SUPABASE_URL.includes('XXXXX')) {
     document.getElementById('supabase-banner').style.display = 'block';
+  }
+  const restored=await restoreSession();
+  if(restored){
+    document.getElementById('login-screen').style.display='none';
+    document.getElementById('app').style.display='block';
+    await initApp();
+    resetIdleTimer();
   }
 });
 
@@ -593,18 +637,7 @@ async function doLogin(){
   try {
     const result = await signInUser(u, p);
     if (result && result.user) {
-      const raw = result.user;
-      user = {
-        username: raw.username,
-        password: raw.password_hash,
-        name: raw.name,
-        role: raw.role,
-        color: raw.color || '#2563EB',
-        repName: raw.rep_name,
-        id: raw.id,
-        superAdmin: raw.super_admin || false,
-        token: result.token
-      };
+      user = mapUser(result.user, result.token);
     }
   } catch(e) {
     console.log('Login hatası:', e);
@@ -618,11 +651,21 @@ async function doLogin(){
   }
   document.getElementById('lerr').style.display='none';
   CU=user;
+  localStorage.setItem('vizecrm_token',CU.token);
+  resetIdleTimer();
   document.getElementById('login-screen').style.display='none';
   document.getElementById('app').style.display='block';
   await initApp();
 }
-function doLogout(){CU=null;document.getElementById('app').style.display='none';document.getElementById('login-screen').style.display='flex';document.getElementById('lu').value='';document.getElementById('lp').value='';}
+function doLogout(){
+  CU=null;
+  localStorage.removeItem('vizecrm_token');
+  if(idleTimer)clearTimeout(idleTimer);
+  document.getElementById('app').style.display='none';
+  document.getElementById('login-screen').style.display='flex';
+  document.getElementById('lu').value='';
+  document.getElementById('lp').value='';
+}
 
 async function initApp(){
   const av=document.getElementById('sb-av');
@@ -964,6 +1007,7 @@ async function savePw(){
   const verifyData = await verifyRes.json();
   if(!verifyRes.ok || !verifyData.user){toast('Mevcut şifre hatalı','red');return;}
   CU.token = verifyData.token; // yeniden giriş doğrulaması yeni bir oturum kartı üretir, güncel tutuyoruz
+  localStorage.setItem('vizecrm_token',CU.token);
   // Yeni şifreyi Edge Function ile güncelle
   if(USE_SUPABASE){
     fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'updatePassword',username:CU.username,newPassword:np,token:CU.token})}).then(r=>r.json()).then(d=>{
