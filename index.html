@@ -865,6 +865,25 @@ function renderRefunds(){
 }
 
 // USERS
+const ROLE_OPTS=[['management','👑 Yönetici'],['sales','💼 Satış'],['evrak','📄 Evrak'],['randevu','📅 Randevu']];
+const ROLE_LABELS={sales:'💼 Satış',evrak:'📄 Evrak',randevu:'📅 Randevu'};
+const ROLE_BADGE_CLS={sales:'b-sales',evrak:'b-ops',randevu:'b-ops'};
+function roleSelect(u){
+  return `<select class="sel" style="font-size:11px;padding:3px 6px;width:auto" onchange="changeRole('${u.username}',this.value)">
+    ${ROLE_OPTS.map(([v,l])=>`<option value="${v}" ${u.role===v?'selected':''}>${l}</option>`).join('')}
+  </select>`;
+}
+async function changeRole(un,newRole){
+  try{
+    const res=await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'updateUserRole',username:un,newRole,token:CU.token})});
+    const d=await res.json();
+    if(!d.success){toast('Hata: '+JSON.stringify(d.error||'Değiştirilemedi'),'red');return;}
+    toast('✓ Departman güncellendi','green');
+    renderUsers();
+  }catch(e){
+    toast('Bağlantı hatası','red');
+  }
+}
 async function renderUsers(){
   // Kullanıcıları Edge Function'dan çek
   const res = await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'getUsers',token:CU.token})});
@@ -893,7 +912,7 @@ async function renderUsers(){
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:8px">
-        <span class="badge b-manager">${isSA?'⭐ Süper Admin':'Yönetici'}</span>
+        ${(CU.superAdmin&&!isMe&&!isSA)?roleSelect(u):`<span class="badge b-manager">${isSA?'⭐ Süper Admin':'Yönetici'}</span>`}
         ${(CU.superAdmin||isMe)?`<button class="btn btn-ghost btn-sm" onclick="editPw('${u.username}')">🔑 Şifre</button>`:'<span style="font-size:11px;color:var(--text3)">Düzenlenemez</span>'}
         ${(CU.superAdmin&&!isMe&&!isSA)?`<button class="btn btn-danger btn-sm" onclick="deleteUser('${u.username}')">🗑 Sil</button>`:''}
       </div>
@@ -903,7 +922,7 @@ async function renderUsers(){
   <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px">Satış & Operasyon</div>
   <div style="display:flex;flex-direction:column;gap:8px">
   ${rest.map(u=>{
-    const cnt=customers.filter(c=>u.role==='sales'?c.rep===u.rep_name:c.ops===u.name).length;
+    const cnt=customers.filter(c=>c.rep===u.name).length;
     const ucolor = u.color || '#2563EB';
     return `<div class="user-card">
       <div style="display:flex;align-items:center;gap:12px">
@@ -911,7 +930,7 @@ async function renderUsers(){
         <div><div style="font-weight:600;font-size:13px">${u.name}</div><div style="font-size:11px;color:var(--text3)">@${u.username} · ${cnt} müşteri</div></div>
       </div>
       <div style="display:flex;align-items:center;gap:8px">
-        <span class="badge ${u.role==='sales'?'b-sales':'b-ops'}">${u.role==='sales'?'💼 Satış':'📋 Ops'}</span>
+        ${CU.superAdmin?roleSelect(u):`<span class="badge ${ROLE_BADGE_CLS[u.role]||'b-ops'}">${ROLE_LABELS[u.role]||u.role}</span>`}
         <button class="btn btn-ghost btn-sm" onclick="editPw('${u.username}')">🔑 Şifre</button>
         <button class="btn btn-amber btn-sm" onclick="resetPw('${u.username}')">🔄 Sıfırla</button>
         ${CU.superAdmin?`<button class="btn btn-danger btn-sm" onclick="deleteUser('${u.username}')">🗑 Sil</button>`:''}
