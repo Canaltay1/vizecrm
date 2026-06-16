@@ -1212,9 +1212,9 @@ function closeModal(){document.getElementById('add-modal').classList.remove('ope
 
 async function addCustomer(){
   const name=document.getElementById('nm-name').value.trim(),phone=document.getElementById('nm-phone').value.trim();
-  if(!name||!phone){toast('Ad ve telefon zorunludur','red');return;}
-  const fee=parseInt(document.getElementById('nm-fee').value)||65000,pre=parseInt(document.getElementById('nm-pre').value)||0;
   const email=document.getElementById('nm-email').value.trim();
+  if(!name||!phone||!email){toast('Ad, telefon ve e-posta zorunludur','red');return;}
+  const fee=parseInt(document.getElementById('nm-fee').value)||0,pre=parseInt(document.getElementById('nm-pre').value)||0;
   const country=document.getElementById('nm-country').value;
   const visa_type=document.getElementById('nm-visa').value;
   try{
