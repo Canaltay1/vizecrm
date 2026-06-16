@@ -421,6 +421,11 @@ textarea.fi2{resize:vertical}
 </style>
 </head>
 <body>
+<script>
+if (localStorage.getItem('vizecrm_token')) {
+  document.write('<style>#login-screen{display:none !important}</style>');
+}
+</script>
 
 <!-- LOGIN -->
 <div id="login-screen">
@@ -554,7 +559,8 @@ async function loadCustomers(){
       status:r.status,fee:r.service_fee||0,prepay:r.prepayment||0,
       days:r.last_modified_at?Math.max(0,Math.floor((Date.now()-new Date(r.last_modified_at).getTime())/86400000)):0,
       lastMod:fmtDT(r.last_modified_at),
-      apptDate:r.appt_date||''
+      apptDate:r.appt_date||'',
+      refundStatus:r.refund_status||false,refundAmount:r.refund_amount||0,refundReason:r.refund_reason||'',refundDate:r.refund_date||''
     }));
     filtered=[...customers];
   }catch(e){
@@ -616,7 +622,7 @@ async function restoreSession(){
   }
 }
 
-window.addEventListener('load', async function() {
+window.addEventListener('DOMContentLoaded', async function() {
   if (!USE_SUPABASE || SUPABASE_URL.includes('XXXXX')) {
     document.getElementById('supabase-banner').style.display = 'block';
   }
@@ -673,18 +679,19 @@ async function initApp(){
   document.getElementById('sb-name').textContent=CU.name;
   document.getElementById('sb-role').textContent={management:'Yönetici',sales:'Satış Temsilcisi',ops:'Operasyon Uzmanı',evrak:'Evrak Sorumlusu',randevu:'Randevu Sorumlusu'}[CU.role];
   const isM=CU.role==='management';
+  await loadCustomers();
+  const refundCount=isM?customers.filter(c=>c.refundStatus).length:0;
   document.getElementById('sb-nav').innerHTML=`
     <div class="sb-sec">Ana Menü</div>
     ${isM?'<button class="nav-item" onclick="showPage(\'dashboard\')"><span class="nav-icon">📊</span> Dashboard</button>':''}
     <button class="nav-item" onclick="showPage(\'customers\')"><span class="nav-icon">👥</span> Müşteriler</button>
     <button class="nav-item" onclick="showPage(\'pipeline\')"><span class="nav-icon">🗂</span> Pipeline</button>
-    ${isM?'<div class="sb-sec">Yönetim</div><button class="nav-item" onclick="showPage(\'refunds\')"><span class="nav-icon">↩</span> İadeler <span class="nav-badge">6</span></button><button class="nav-item" onclick="showPage(\'users\')"><span class="nav-icon">🔐</span> Kullanıcılar</button>':''}
+    ${isM?'<div class="sb-sec">Yönetim</div><button class="nav-item" onclick="showPage(\'refunds\')"><span class="nav-icon">↩</span> İadeler'+(refundCount?' <span class="nav-badge">'+refundCount+'</span>':'')+'</button><button class="nav-item" onclick="showPage(\'users\')"><span class="nav-icon">🔐</span> Kullanıcılar</button>':''}
   `;
   document.getElementById('topbar-right').innerHTML=`
     <div class="tb-search"><span>🔍</span><input placeholder="Müşteri ara..." oninput="gSearch(this.value)"></div>
     <button class="btn btn-primary" onclick="openModal()">+ Yeni Müşteri</button>
   `;
-  await loadCustomers();
   isM?await showPage('dashboard'):await showPage('customers');
 }
 
@@ -694,7 +701,7 @@ async function showPage(p){
   document.getElementById('page-title').textContent=PTITLES[p]||p;
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.querySelector('[onclick="showPage(\''+p+'\')"]')?.classList.add('active');
-  if(p==='dashboard'||p==='customers'||p==='pipeline')await loadCustomers();
+  if(p==='dashboard'||p==='customers'||p==='pipeline'||p==='refunds')await loadCustomers();
   await ({dashboard:renderDash,customers:renderCusts,pipeline:renderPipeline,refunds:renderRefunds,users:renderUsers,account:renderAccount})[p]?.();
 }
 function gSearch(q){const sq=q.toLowerCase();filtered=customers.filter(c=>c.name.toLowerCase().includes(sq)||c.id.toLowerCase().includes(sq)||c.phone.includes(sq));if(document.getElementById('cust-tbody'))renderRows();}
@@ -839,20 +846,21 @@ function renderPipeline(){
 
 // REFUNDS
 function renderRefunds(){
+  const refunded=customers.filter(c=>c.refundStatus);
+  const totalRefund=refunded.reduce((s,c)=>s+(c.refundAmount||0),0);
+  const rate=customers.length?Math.round(refunded.length/customers.length*1000)/10:0;
+  const byCountry=topGroups(refunded,c=>c.country,1);
+  const topCountry=byCountry.list.length?byCountry.list[0][0]:'—';
   document.getElementById('main-content').innerHTML=`
   <div class="stats-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:20px">
-    <div class="stat-card c-red"><div class="stat-icon" style="background:var(--red-bg);color:var(--red)">↩</div><div class="stat-val" style="color:var(--red)">₺398K</div><div class="stat-label">Bu Ay İade — 6 müşteri</div></div>
-    <div class="stat-card c-red"><div class="stat-icon" style="background:var(--red-bg);color:var(--red)">📉</div><div class="stat-val" style="color:var(--red)">%22.9</div><div class="stat-label">İade Oranı — Hedef %10</div></div>
-    <div class="stat-card c-amber"><div class="stat-icon" style="background:var(--amber-bg);color:var(--amber)">🇩🇪</div><div class="stat-val" style="color:var(--amber);font-size:18px">3 İade</div><div class="stat-label">En Çok — Almanya</div></div>
+    <div class="stat-card c-red"><div class="stat-icon" style="background:var(--red-bg);color:var(--red)">↩</div><div class="stat-val" style="color:var(--red)">${fmtTL(totalRefund)}</div><div class="stat-label">Toplam İade — ${refunded.length} müşteri</div></div>
+    <div class="stat-card c-red"><div class="stat-icon" style="background:var(--red-bg);color:var(--red)">📉</div><div class="stat-val" style="color:var(--red)">%${rate}</div><div class="stat-label">İade Oranı — Hedef %10</div></div>
+    <div class="stat-card c-amber"><div class="stat-icon" style="background:var(--amber-bg);color:var(--amber)">🌍</div><div class="stat-val" style="color:var(--amber);font-size:18px">${refunded.length?topCountry:'—'}</div><div class="stat-label">En Çok İade</div></div>
   </div>
   <div class="tbl-wrap"><div class="tbl-toolbar"><div class="tbl-label">İade Kayıtları</div></div>
     <table class="tbl"><thead><tr><th>Müşteri</th><th>Ülke</th><th>Tutar</th><th>Neden</th><th>Temsilci</th><th>Tarih</th></tr></thead>
-    <tbody>
-      <tr><td><b>Zeynep Arslan</b></td><td>🇩🇪 Almanya</td><td style="color:var(--red);font-weight:700">₺85,000</td><td>Güvensizlik — süreç hakkında bilgi yoktu</td><td>Mehmet K.</td><td>08 Haz</td></tr>
-      <tr><td><b>Hakan Demir</b></td><td>🇬🇧 İngiltere</td><td style="color:var(--red);font-weight:700">₺72,000</td><td>Rakip daha ucuz teklif verdi</td><td>Ece A.</td><td>05 Haz</td></tr>
-      <tr><td><b>Selin Yıldız</b></td><td>🇩🇪 Almanya</td><td style="color:var(--red);font-weight:700">₺68,000</td><td>Uzun süre haber alınamadı</td><td>Burak S.</td><td>03 Haz</td></tr>
-      <tr><td><b>Murat Çelik</b></td><td>🇳🇱 Hollanda</td><td style="color:var(--red);font-weight:700">₺65,000</td><td>Randevu bulunamayacağı düşünüldü</td><td>Mehmet K.</td><td>01 Haz</td></tr>
-      <tr><td><b>Elif Şahin</b></td><td>🇫🇷 Fransa</td><td style="color:var(--red);font-weight:700">₺58,000</td><td>İletişim eksikliği</td><td>Ayşe T.</td><td>28 May</td></tr>
+    <tbody>${refunded.length===0?'<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--text3)">Henüz iade kaydı yok</td></tr>':refunded.map(c=>`
+      <tr onclick="openPanel('${c.id}')" style="cursor:pointer"><td><b>${c.name}</b></td><td>${c.country}</td><td style="color:var(--red);font-weight:700">₺${(c.refundAmount||0).toLocaleString('tr-TR')}</td><td>${c.refundReason||'—'}</td><td>${c.rep}</td><td>${c.refundDate?fmtDate(c.refundDate):'—'}</td></tr>`).join('')}
     </tbody></table>
   </div>`;
 }
@@ -868,7 +876,7 @@ async function renderUsers(){
   const rest = allUsers.filter(u=>u.role!=='management');
   document.getElementById('main-content').innerHTML=`
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-    <div style="font-size:12px;color:var(--text2)">${USERS.length} kullanıcı · ${mgrs.length} yönetici · ${rest.filter(u=>u.role==='sales').length} satış · ${rest.filter(u=>u.role==='ops').length} operasyon</div>
+    <div style="font-size:12px;color:var(--text2)">${allUsers.length} kullanıcı · ${mgrs.length} yönetici · ${rest.filter(u=>u.role==='sales').length} satış · ${rest.filter(u=>u.role==='evrak').length} evrak · ${rest.filter(u=>u.role==='randevu').length} randevu</div>
     <button class="btn btn-primary btn-sm">+ Kullanıcı Ekle</button>
   </div>
   <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px">Yöneticiler</div>
@@ -974,8 +982,7 @@ async function saveName(){
     if(!d.success){toast('Hata: '+JSON.stringify(d.error),'red');return;}
   }
   CU.name=n;
-  const u=USERS.find(x=>x.username===CU.username);if(u)u.name=n;
-  if(CU.role==='sales'){CU.repName=n;if(u)u.repName=n;}
+  if(CU.role==='sales')CU.repName=n;
   document.getElementById('sb-av').textContent=initials(n);
   document.getElementById('sb-name').textContent=n;
   toast('✓ Ad güncellendi — tüm cihazlara yansıdı','green');
@@ -984,15 +991,13 @@ async function saveName(){
 async function saveUser(){
   const n=document.getElementById('nd-user').value.trim().toLowerCase();
   if(!n||n.length<3){toast('En az 3 karakter','red');return;}
-  if(USERS.find(u=>u.username===n&&u.username!==CU.username)){toast('Bu kullanıcı adı alınmış','red');return;}
   const oldUsername=CU.username;
   if(USE_SUPABASE){
     const res=await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'updateUsername',username:oldUsername,newUsername:n,token:CU.token})});
     const d=await res.json();
     if(!d.success){toast('Hata: '+JSON.stringify(d.error),'red');return;}
   }
-  const u=USERS.find(x=>x.username===oldUsername);
-  CU.username=n;if(u)u.username=n;
+  CU.username=n;
   toast('✓ Kullanıcı adı güncellendi — tüm cihazlara yansıdı','green');
   renderAccount();
 }
@@ -1188,9 +1193,18 @@ function openPanel(id){
   </div>
   <div class="ps">
     <div class="ps-head"><div class="ps-title">İade İşlemi</div></div>
-    <div class="ps-body" style="display:flex;align-items:center;justify-content:space-between">
-      <div style="font-size:12px;color:var(--text2)">İade talebi varsa buradan kayıt açın</div>
-      <button class="btn btn-danger btn-sm">+ İade Ekle</button>
+    <div class="ps-body">
+    ${c.refundStatus?`
+      <div style="font-size:12px;color:var(--red);font-weight:600">✓ İade kaydedildi — ₺${(c.refundAmount||0).toLocaleString('tr-TR')}</div>
+      <div style="font-size:11px;color:var(--text2);margin-top:4px">${c.refundReason||''} ${c.refundDate?'· '+fmtDate(c.refundDate):''}</div>
+    `:`
+      <div style="font-size:12px;color:var(--text2);margin-bottom:10px">İade talebi varsa buradan kayıt açın</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <input class="fi2" type="number" id="rf-amt-${c.id}" placeholder="Tutar (₺)" style="flex:1;min-width:110px">
+        <input class="fi2" id="rf-reason-${c.id}" placeholder="Neden..." style="flex:2;min-width:140px">
+        <button class="btn btn-danger btn-sm" onclick="addRefund('${c.id}')">+ İade Ekle</button>
+      </div>
+    `}
     </div>
   </div>
   <div class="ps">
@@ -1214,6 +1228,22 @@ function transferCustomer(id){
   closePanel();
   renderRows();
   toast('✓ '+cust.name+' → '+newRep+' temsilcisine aktarıldı','green');
+}
+
+async function addRefund(id){
+  const amt=parseInt(document.getElementById('rf-amt-'+id)?.value)||0;
+  const reason=(document.getElementById('rf-reason-'+id)?.value||'').trim();
+  if(!amt||!reason){toast('Tutar ve neden zorunludur','red');return;}
+  try{
+    const res=await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'setRefund',customerId:id,refundAmount:amt,refundReason:reason,token:CU.token})});
+    const d=await res.json();
+    if(!d.success){toast('Hata: '+JSON.stringify(d.error||'Kaydedilemedi'),'red');return;}
+    await loadCustomers();
+    openPanel(id);
+    toast('✓ İade kaydedildi','red');
+  }catch(e){
+    toast('Bağlantı hatası','red');
+  }
 }
 
 async function deleteCustomer(id, name){
