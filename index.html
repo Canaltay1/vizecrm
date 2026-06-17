@@ -774,7 +774,7 @@ function renderCusts(){
     </select>
   </div>
   <div class="tbl-wrap">
-    <div class="tbl-toolbar"><div class="tbl-label" id="cust-count">— Müşteri</div><button class="btn btn-ghost btn-sm">📥 Excel</button></div>
+    <div class="tbl-toolbar"><div class="tbl-label" id="cust-count">— Müşteri</div><button class="btn btn-ghost btn-sm" onclick="exportExcel()">📥 Excel</button></div>
     <div style="overflow-x:auto">
     <table class="tbl" style="min-width:900px"><thead><tr><th>Dosya No</th><th>Ad Soyad</th><th>Telefon</th><th>Ülke</th><th>Aşama</th><th>Aramalar</th><th>Randevu</th><th>Ödeme</th><th>Temsilci</th><th>Güncelleme</th></tr></thead>
     <tbody id="cust-tbody"></tbody></table>
@@ -1347,6 +1347,19 @@ async function addNewDocument(id){
   }
 }
 
+function exportExcel(){
+  if(!customers||customers.length===0){toast('Dışa aktarılacak müşteri yok','red');return;}
+  const headers=['Dosya No','Ad Soyad','Telefon','Ülke','Vize Türü','Aşama','Satış Temsilcisi','Oluşturma Tarihi'];
+  const rows=customers.map(c=>[c.id,c.name,c.phone,c.country,c.visa,c.status,c.rep,c.created]);
+  const csv=[headers,...rows].map(r=>r.map(v=>`"${v||''}"`).join(',')).join('\n');
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  const link=document.createElement('a');
+  link.href=URL.createObjectURL(blob);
+  link.download=`vizecrm-musteriler-${new Date().toISOString().slice(0,10)}.csv`;
+  link.click();
+  toast('✓ Excel dosyası indirildi','green');
+}
+
 async function openAddUserForm(){
   const username=prompt('Kullanıcı adı:');
   if(!username)return;
@@ -1456,7 +1469,16 @@ async function saveNote(id){
   }
 }
 function closePanel(){document.getElementById('overlay').classList.remove('open');document.getElementById('detail-panel').classList.remove('open');}
-function openModal(){document.getElementById('add-modal').classList.add('open');}
+async function openModal(){
+  try{
+    const res=await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'getUsers',token:CU.token})});
+    const d=await res.json();
+    const salesReps=(d.users||[]).filter(u=>u.role==='sales');
+    const repSelect=document.getElementById('nm-rep');
+    repSelect.innerHTML=salesReps.map(u=>`<option value="${u.username}">${u.name}</option>`).join('');
+  }catch(e){}
+  document.getElementById('add-modal').classList.add('open');
+}
 function closeModal(){document.getElementById('add-modal').classList.remove('open');}
 
 async function addCustomer(){
