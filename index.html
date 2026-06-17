@@ -1369,7 +1369,7 @@ async function openAddUserForm(){
   if(!name)return;
   
   try{
-    const res=await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'addUser',username,password,name,token:CU.token})});
+    const res=await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'addUser',username:username.trim(),password:password.trim(),name:name.trim(),token:CU.token})});
     const d=await res.json();
     if(!d.success){toast('Hata: '+(d.error||'Eklenemedi'),'red');return;}
     toast('✓ Kullanıcı eklendi','green');
