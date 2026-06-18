@@ -737,7 +737,7 @@ async function initApp(){
     ${isM?'<div class="sb-sec">Yönetim</div><button class="nav-item" onclick="showPage(\'refunds\')"><span class="nav-icon">↩</span> İadeler'+(refundCount?' <span class="nav-badge">'+refundCount+'</span>':'')+'</button><button class="nav-item" onclick="showPage(\'users\')"><span class="nav-icon">🔐</span> Kullanıcılar</button>':''}
   `;
   document.getElementById('topbar-right').innerHTML=`
-    <div class="tb-search"><span>🔍</span><input placeholder="Müşteri ara..." oninput="gSearch(this.value)"></div>
+    <div class="tb-search" id="tb-search-wrap"><span>🔍</span><input placeholder="Müşteri ara..." oninput="gSearch(this.value)"></div>
     <button class="btn btn-primary" onclick="openModal()">+ Yeni Müşteri</button>
   `;
   isM?await showPage('dashboard'):await showPage('customers');
@@ -749,6 +749,8 @@ async function showPage(p){
   document.getElementById('page-title').textContent=PTITLES[p]||p;
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.querySelector('[onclick="showPage(\''+p+'\')"]')?.classList.add('active');
+  const searchWrap=document.getElementById('tb-search-wrap');
+  if(searchWrap)searchWrap.style.display=(p==='dashboard')?'none':'';
   if(p==='dashboard'||p==='customers'||p==='pipeline'||p==='refunds')await loadCustomers();
   await ({dashboard:renderDash,customers:renderCusts,pipeline:renderPipeline,refunds:renderRefunds,users:renderUsers,account:renderAccount})[p]?.();
 }
