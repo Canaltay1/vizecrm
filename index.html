@@ -554,6 +554,23 @@ if (localStorage.getItem('vizecrm_token')) {
   </div>
 </div>
 
+<div class="modal" id="edit-user-modal">
+  <div class="modal-bg" onclick="closeEditUserModal()"></div>
+  <div class="modal-box">
+    <div class="modal-title">Kullanıcı Profili</div>
+    <div class="form-row">
+      <div class="fg"><label class="fl2">Ad Soyad</label><input class="fi2" id="eu-name" readonly style="background:var(--bg);color:var(--text2)"></div>
+      <div class="fg"><label class="fl2">Kullanıcı Adı</label><input class="fi2" id="eu-username" readonly style="background:var(--bg);color:var(--text2)"></div>
+    </div>
+    <div class="fg"><label class="fl2">E-posta</label><input class="fi2" id="eu-email" placeholder="ornek@email.com"></div>
+    <div class="fg" style="margin-bottom:0"><label class="fl2">Telefon</label><input class="fi2" id="eu-phone" placeholder="+90 555 000 00 00"></div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeEditUserModal()">İptal</button>
+      <button class="btn btn-primary" onclick="saveUserInfo()">✓ Kaydet</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast-wrap" id="toast-wrap"></div>
 
 <script>
@@ -929,6 +946,7 @@ async function renderUsers(){
   const res = await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'getUsers',token:CU.token})});
   const data = await res.json();
   const allUsers = data.users || [];
+  window.userDirectoryCache = allUsers;
   
   const mgrs = allUsers.filter(u=>u.role==='management');
   const rest = allUsers.filter(u=>u.role!=='management');
@@ -951,9 +969,9 @@ async function renderUsers(){
           <div style="font-size:11px;color:var(--text3)">@${u.username}</div>
         </div>
       </div>
-      <div style="display:flex;align-items:center;gap:8px">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         ${(CU.superAdmin&&!isMe&&!isSA)?roleSelect(u):`<span class="badge b-manager">${isSA?'⭐ Süper Admin':'Yönetici'}</span>`}
-        ${(CU.superAdmin||isMe)?`<button class="btn btn-ghost btn-sm" onclick="editPw('${u.username}')">🔑 Şifre</button>`:'<span style="font-size:11px;color:var(--text3)">Düzenlenemez</span>'}
+        ${(CU.superAdmin||isMe)?`<button class="btn btn-ghost btn-sm" onclick="openEditUserModal('${u.username}')">👤 Profil</button><button class="btn btn-ghost btn-sm" onclick="editPw('${u.username}')">🔑 Şifre</button>`:'<span style="font-size:11px;color:var(--text3)">Düzenlenemez</span>'}
         ${(CU.superAdmin&&!isMe&&!isSA)?`<button class="btn btn-danger btn-sm" onclick="deleteUser('${u.username}')">🗑 Sil</button>`:''}
       </div>
     </div>`;
@@ -969,8 +987,9 @@ async function renderUsers(){
         <div class="av av-32" style="background:${ucolor};color:#fff">${initials(u.name)}</div>
         <div><div style="font-weight:600;font-size:13px">${u.name}</div><div style="font-size:11px;color:var(--text3)">@${u.username} · ${cnt} müşteri</div></div>
       </div>
-      <div style="display:flex;align-items:center;gap:8px">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         ${CU.superAdmin?roleSelect(u):`<span class="badge ${ROLE_BADGE_CLS[u.role]||'b-ops'}">${ROLE_LABELS[u.role]||u.role}</span>`}
+        <button class="btn btn-ghost btn-sm" onclick="openEditUserModal('${u.username}')">👤 Profil</button>
         <button class="btn btn-ghost btn-sm" onclick="editPw('${u.username}')">🔑 Şifre</button>
         <button class="btn btn-amber btn-sm" onclick="resetPw('${u.username}')">🔄 Sıfırla</button>
         ${CU.superAdmin?`<button class="btn btn-danger btn-sm" onclick="deleteUser('${u.username}')">🗑 Sil</button>`:''}
@@ -978,6 +997,33 @@ async function renderUsers(){
     </div>`;
   }).join('')}
   </div>`;
+}
+let editUserTarget=null;
+function openEditUserModal(un){
+  const u=(window.userDirectoryCache||[]).find(x=>x.username===un);
+  if(!u){toast('Kullanıcı bulunamadı','red');return;}
+  editUserTarget=un;
+  document.getElementById('eu-name').value=u.name||'';
+  document.getElementById('eu-username').value='@'+u.username;
+  document.getElementById('eu-email').value=u.email||'';
+  document.getElementById('eu-phone').value=u.phone||'';
+  document.getElementById('edit-user-modal').classList.add('open');
+}
+function closeEditUserModal(){document.getElementById('edit-user-modal').classList.remove('open');editUserTarget=null;}
+async function saveUserInfo(){
+  if(!editUserTarget)return;
+  const email=(document.getElementById('eu-email').value||'').trim();
+  const phone=(document.getElementById('eu-phone').value||'').trim();
+  try{
+    const res=await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'updateUserInfo',username:editUserTarget,email,phone,token:CU.token})});
+    const d=await res.json();
+    if(!d.success){toast('Hata: '+JSON.stringify(d.error||'Kaydedilemedi'),'red');return;}
+    toast('✓ Profil güncellendi','green');
+    closeEditUserModal();
+    renderUsers();
+  }catch(e){
+    toast('Bağlantı hatası','red');
+  }
 }
 async function editPw(un){
   const p=prompt(un+' için yeni şifre:');
