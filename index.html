@@ -607,7 +607,8 @@ async function loadCustomers(){
       lastMod:fmtDT(r.last_modified_at),
       created:r.created_at||null,lastModRaw:r.last_modified_at||null,
       apptDate:r.appt_date||'',
-      refundStatus:r.refund_status||false,refundAmount:r.refund_amount||0,refundReason:r.refund_reason||'',refundDate:r.refund_date||'',
+      refundStatus:r.refund_status||'',refundAmount:r.refund_amount||0,refundReason:r.refund_reason||'',refundDate:r.refund_date||'',
+      refundRequestedBy:r.refund_requested_by||'',refundRequestedAt:r.refund_requested_at||null,
       callTotal:r.call_total||0,callReached:r.call_reached||0
     }));
     filtered=[...customers];
@@ -728,7 +729,7 @@ async function initApp(){
   document.getElementById('sb-role').textContent={management:'Yönetici',sales:'Satış Temsilcisi',ops:'Operasyon Uzmanı',evrak:'Evrak Sorumlusu',randevu:'Randevu Sorumlusu'}[CU.role];
   const isM=CU.role==='management';
   await loadCustomers();
-  const refundCount=isM?customers.filter(c=>c.refundStatus).length:0;
+  const refundCount=isM?customers.filter(c=>c.refundStatus==='Talep Edildi').length:0;
   document.getElementById('sb-nav').innerHTML=`
     <div class="sb-sec">Ana Menü</div>
     ${isM?'<button class="nav-item" onclick="showPage(\'dashboard\')"><span class="nav-icon">📊</span> Dashboard</button>':''}
@@ -1005,21 +1006,30 @@ function renderPipeline(){
 
 // REFUNDS
 function renderRefunds(){
-  const refunded=customers.filter(c=>c.refundStatus);
-  const totalRefund=refunded.reduce((s,c)=>s+(c.refundAmount||0),0);
-  const rate=customers.length?Math.round(refunded.length/customers.length*1000)/10:0;
-  const byCountry=topGroups(refunded,c=>c.country,1);
+  const pending=customers.filter(c=>c.refundStatus==='Talep Edildi');
+  const completed=customers.filter(c=>c.refundStatus==='Gerçekleşti');
+  const totalRefund=completed.reduce((s,c)=>s+(c.refundAmount||0),0);
+  const rate=customers.length?Math.round(completed.length/customers.length*1000)/10:0;
+  const byCountry=topGroups(completed,c=>c.country,1);
   const topCountry=byCountry.list.length?byCountry.list[0][0]:'—';
   document.getElementById('main-content').innerHTML=`
-  <div class="stats-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:20px">
-    <div class="stat-card c-red"><div class="stat-icon" style="background:var(--red-bg);color:var(--red)">↩</div><div class="stat-val" style="color:var(--red)">${fmtTL(totalRefund)}</div><div class="stat-label">Toplam İade — ${refunded.length} müşteri</div></div>
+  <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px">
+    <div class="stat-card c-amber"><div class="stat-icon" style="background:var(--amber-bg);color:var(--amber)">⏳</div><div class="stat-val" style="color:var(--amber)">${pending.length}</div><div class="stat-label">Bekleyen Talep</div></div>
+    <div class="stat-card c-red"><div class="stat-icon" style="background:var(--red-bg);color:var(--red)">↩</div><div class="stat-val" style="color:var(--red)">${fmtTL(totalRefund)}</div><div class="stat-label">Toplam İade — ${completed.length} müşteri</div></div>
     <div class="stat-card c-red"><div class="stat-icon" style="background:var(--red-bg);color:var(--red)">📉</div><div class="stat-val" style="color:var(--red)">%${rate}</div><div class="stat-label">İade Oranı — Hedef %10</div></div>
-    <div class="stat-card c-amber"><div class="stat-icon" style="background:var(--amber-bg);color:var(--amber)">🌍</div><div class="stat-val" style="color:var(--amber);font-size:18px">${refunded.length?topCountry:'—'}</div><div class="stat-label">En Çok İade</div></div>
+    <div class="stat-card c-amber"><div class="stat-icon" style="background:var(--amber-bg);color:var(--amber)">🌍</div><div class="stat-val" style="color:var(--amber);font-size:18px">${completed.length?topCountry:'—'}</div><div class="stat-label">En Çok İade</div></div>
   </div>
-  <div class="tbl-wrap"><div class="tbl-toolbar"><div class="tbl-label">İade Kayıtları</div></div>
-    <table class="tbl"><thead><tr><th>Müşteri</th><th>Ülke</th><th>Tutar</th><th>Neden</th><th>Temsilci</th><th>Tarih</th></tr></thead>
-    <tbody>${refunded.length===0?'<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--text3)">Henüz iade kaydı yok</td></tr>':refunded.map(c=>`
-      <tr onclick="openPanel('${c.id}')" style="cursor:pointer"><td><b>${c.name}</b></td><td>${c.country}</td><td style="color:var(--red);font-weight:700">₺${(c.refundAmount||0).toLocaleString('tr-TR')}</td><td>${c.refundReason||'—'}</td><td>${c.rep}</td><td>${c.refundDate?fmtDate(c.refundDate):'—'}</td></tr>`).join('')}
+  <div class="tbl-wrap" style="margin-bottom:20px">
+    <div class="tbl-toolbar"><div class="tbl-label">⏳ Bekleyen İade Talepleri</div><span style="font-size:11px;color:var(--text2)">${pending.length} talep</span></div>
+    <table class="tbl"><thead><tr><th>Müşteri</th><th>Ülke</th><th>Tutar</th><th>Neden</th><th>Talep Eden</th><th>Tarih</th>${CU.role==='management'?'<th></th>':''}</tr></thead>
+    <tbody>${pending.length===0?'<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--text3)">Bekleyen talep yok</td></tr>':pending.map(c=>`
+      <tr onclick="openPanel('${c.id}')" style="cursor:pointer"><td><b>${c.name}</b></td><td>${c.country}</td><td style="color:var(--amber);font-weight:700">₺${(c.refundAmount||0).toLocaleString('tr-TR')}</td><td>${c.refundReason||'—'}</td><td>${c.refundRequestedBy||c.rep}</td><td>${c.refundRequestedAt?fmtDT(c.refundRequestedAt):'—'}</td>${CU.role==='management'?`<td><button class="btn btn-success btn-sm" onclick="event.stopPropagation();completeRefund('${c.id}')">✓ Gerçekleşti</button></td>`:''}</tr>`).join('')}
+    </tbody></table>
+  </div>
+  <div class="tbl-wrap"><div class="tbl-toolbar"><div class="tbl-label">Tamamlanan İadeler</div></div>
+    <table class="tbl"><thead><tr><th>Müşteri</th><th>Ülke</th><th>Tutar</th><th>Neden</th><th>Talep Eden</th><th>Tarih</th></tr></thead>
+    <tbody>${completed.length===0?'<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--text3)">Henüz tamamlanan iade yok</td></tr>':completed.map(c=>`
+      <tr onclick="openPanel('${c.id}')" style="cursor:pointer"><td><b>${c.name}</b></td><td>${c.country}</td><td style="color:var(--red);font-weight:700">₺${(c.refundAmount||0).toLocaleString('tr-TR')}</td><td>${c.refundReason||'—'}</td><td>${c.refundRequestedBy||c.rep}</td><td>${c.refundDate?fmtDate(c.refundDate):'—'}</td></tr>`).join('')}
     </tbody></table>
   </div>`;
 }
@@ -1402,6 +1412,34 @@ async function openPanel(id){
     </div>
   </div>
 
+  <div class="ps">
+    <div class="ps-head"><div class="ps-title">İade İşlemi</div>${c.refundStatus==='Talep Edildi'?'<span class="badge" style="background:var(--amber-bg);color:var(--amber)">⏳ Talep Edildi</span>':c.refundStatus==='Gerçekleşti'?'<span class="badge" style="background:var(--red-bg);color:var(--red)">✓ Gerçekleşti</span>':''}</div>
+    <div class="ps-body">
+    ${c.refundStatus==='Gerçekleşti'?`
+      <div style="font-size:12px;color:var(--red);font-weight:600">✓ İade gerçekleşti — ₺${(c.refundAmount||0).toLocaleString('tr-TR')}</div>
+      <div style="font-size:11px;color:var(--text2);margin-top:4px">${c.refundReason||''} ${c.refundDate?'· tamamlanma: '+fmtDate(c.refundDate):''}</div>
+      ${c.refundRequestedBy?`<div style="font-size:11px;color:var(--text3);margin-top:2px">Talep eden: ${c.refundRequestedBy}${c.refundRequestedAt?' — '+fmtDT(c.refundRequestedAt):''}</div>`:''}
+    `:c.refundStatus==='Talep Edildi'?`
+      <div style="font-size:12px;color:var(--amber);font-weight:600">⏳ İade talebi bekliyor — ₺${(c.refundAmount||0).toLocaleString('tr-TR')}</div>
+      <div style="font-size:11px;color:var(--text2);margin-top:4px">${c.refundReason||''}</div>
+      <div style="font-size:11px;color:var(--text3);margin-top:2px">Talep eden: ${c.refundRequestedBy||'—'}${c.refundRequestedAt?' — '+fmtDT(c.refundRequestedAt):''}</div>
+      ${CU.role==='management'?`
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button class="btn btn-success btn-sm" onclick="completeRefund('${c.id}')">✓ İade Gerçekleşti</button>
+        <button class="btn btn-ghost btn-sm" onclick="cancelRefundRequest('${c.id}')">✕ Talebi İptal Et</button>
+      </div>
+      `:`<div style="font-size:11px;color:var(--text3);margin-top:8px">Yönetici onayı bekleniyor</div>`}
+    `:`
+      <div style="font-size:12px;color:var(--text2);margin-bottom:10px">İade talebi varsa buradan kayıt açın</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <input class="fi2" type="number" id="rf-amt-${c.id}" placeholder="Tutar (₺)" style="flex:1;min-width:110px">
+        <input class="fi2" id="rf-reason-${c.id}" placeholder="Neden..." style="flex:2;min-width:140px">
+        <button class="btn btn-danger btn-sm" onclick="requestRefund('${c.id}')">+ İade Talebi Oluştur</button>
+      </div>
+    `}
+    </div>
+  </div>
+
   ${CU.role==='management'?`
   <div class="ps">
     <div class="ps-head"><div class="ps-title">🔄 Temsilci Değiştir</div></div>
@@ -1414,22 +1452,6 @@ async function openPanel(id){
         </select>
         <button class="btn btn-primary btn-sm" onclick="transferCustomer('${c.id}')">Aktar →</button>
       </div>
-    </div>
-  </div>
-  <div class="ps">
-    <div class="ps-head"><div class="ps-title">İade İşlemi</div></div>
-    <div class="ps-body">
-    ${c.refundStatus?`
-      <div style="font-size:12px;color:var(--red);font-weight:600">✓ İade kaydedildi — ₺${(c.refundAmount||0).toLocaleString('tr-TR')}</div>
-      <div style="font-size:11px;color:var(--text2);margin-top:4px">${c.refundReason||''} ${c.refundDate?'· '+fmtDate(c.refundDate):''}</div>
-    `:`
-      <div style="font-size:12px;color:var(--text2);margin-bottom:10px">İade talebi varsa buradan kayıt açın</div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <input class="fi2" type="number" id="rf-amt-${c.id}" placeholder="Tutar (₺)" style="flex:1;min-width:110px">
-        <input class="fi2" id="rf-reason-${c.id}" placeholder="Neden..." style="flex:2;min-width:140px">
-        <button class="btn btn-danger btn-sm" onclick="addRefund('${c.id}')">+ İade Ekle</button>
-      </div>
-    `}
     </div>
   </div>
   <div class="ps">
@@ -1460,17 +1482,43 @@ async function transferCustomer(id){
   }
 }
 
-async function addRefund(id){
+async function requestRefund(id){
   const amt=parseInt(document.getElementById('rf-amt-'+id)?.value)||0;
   const reason=(document.getElementById('rf-reason-'+id)?.value||'').trim();
   if(!amt||!reason){toast('Tutar ve neden zorunludur','red');return;}
   try{
-    const res=await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'setRefund',customerId:id,refundAmount:amt,refundReason:reason,token:CU.token})});
+    const res=await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'requestRefund',customerId:id,refundAmount:amt,refundReason:reason,token:CU.token})});
     const d=await res.json();
     if(!d.success){toast('Hata: '+JSON.stringify(d.error||'Kaydedilemedi'),'red');return;}
     await loadCustomers();
     await openPanel(id);
-    toast('✓ İade kaydedildi','red');
+    toast('⏳ İade talebi oluşturuldu, yönetici onayı bekleniyor','amber');
+  }catch(e){
+    toast('Bağlantı hatası','red');
+  }
+}
+async function completeRefund(id){
+  try{
+    const res=await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'completeRefund',customerId:id,token:CU.token})});
+    const d=await res.json();
+    if(!d.success){toast('Hata: '+JSON.stringify(d.error||'Kaydedilemedi'),'red');return;}
+    await loadCustomers();
+    if(document.getElementById('detail-panel')?.classList.contains('open'))await openPanel(id);
+    if(document.getElementById('page-title')?.textContent==='İadeler')renderRefunds();
+    toast('✓ İade gerçekleşti olarak işaretlendi','green');
+  }catch(e){
+    toast('Bağlantı hatası','red');
+  }
+}
+async function cancelRefundRequest(id){
+  if(!confirm('Bu iade talebini iptal etmek istediğine emin misin?'))return;
+  try{
+    const res=await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'cancelRefundRequest',customerId:id,token:CU.token})});
+    const d=await res.json();
+    if(!d.success){toast('Hata: '+JSON.stringify(d.error||'Kaydedilemedi'),'red');return;}
+    await loadCustomers();
+    await openPanel(id);
+    toast('✕ İade talebi iptal edildi','amber');
   }catch(e){
     toast('Bağlantı hatası','red');
   }
