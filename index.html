@@ -1319,11 +1319,13 @@ function renderRefunds(){
 
 // USERS
 const ROLE_OPTS=[['management','👑 Yönetici'],['sales','💼 Satış'],['evrak','📄 Evrak'],['randevu','📅 Randevu']];
+const ROLE_OPTS_LIMITED=[['sales','💼 Satış'],['evrak','📄 Evrak'],['randevu','📅 Randevu']];
 const ROLE_LABELS={sales:'💼 Satış',evrak:'📄 Evrak',randevu:'📅 Randevu'};
 const ROLE_BADGE_CLS={sales:'b-sales',evrak:'b-ops',randevu:'b-ops'};
 function roleSelect(u){
+  const opts=CU.superAdmin?ROLE_OPTS:ROLE_OPTS_LIMITED;
   return `<select class="sel" style="font-size:11px;padding:3px 6px;width:auto" onchange="changeRole('${u.username}',this.value)">
-    ${ROLE_OPTS.map(([v,l])=>`<option value="${v}" ${u.role===v?'selected':''}>${l}</option>`).join('')}
+    ${opts.map(([v,l])=>`<option value="${v}" ${u.role===v?'selected':''}>${l}</option>`).join('')}
   </select>`;
 }
 async function changeRole(un,newRole){
@@ -1384,7 +1386,7 @@ async function renderUsers(){
         <div><div style="font-weight:600;font-size:13px">${u.name}</div><div style="font-size:11px;color:var(--text3)">@${u.username} · ${cnt} müşteri</div></div>
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        ${CU.superAdmin?roleSelect(u):`<span class="badge ${ROLE_BADGE_CLS[u.role]||'b-ops'}">${ROLE_LABELS[u.role]||u.role}</span>`}
+        ${(CU.role==='management')?roleSelect(u):`<span class="badge ${ROLE_BADGE_CLS[u.role]||'b-ops'}">${ROLE_LABELS[u.role]||u.role}</span>`}
         <button class="btn btn-ghost btn-sm" onclick="openEditUserModal('${u.username}')">👤 Profil</button>
         <button class="btn btn-ghost btn-sm" onclick="editPw('${u.username}')">🔑 Şifre</button>
         <button class="btn btn-amber btn-sm" onclick="resetPw('${u.username}')">🔄 Sıfırla</button>
@@ -1582,7 +1584,12 @@ async function openPanel(id){
         <div class="fi"><div class="fl">Ad Soyad</div><input class="fi2" id="ed-name-${c.id}" value="${c.name}" style="padding:6px;width:100%"></div>
         <div class="fi"><div class="fl">Telefon</div><input class="fi2" id="ed-phone-${c.id}" value="${c.phone}" style="padding:6px;width:100%"></div>
         <div class="fi"><div class="fl">E-posta</div><input class="fi2" id="ed-email-${c.id}" value="${c.email||''}" style="padding:6px;width:100%"></div>
-        <div class="fi"><div class="fl">Vize Türü</div><input class="fi2" id="ed-visa-${c.id}" value="${c.visa}" style="padding:6px;width:100%"></div>
+        <div class="fi"><div class="fl">Vize Türü</div><select class="fi2" id="ed-visa-${c.id}" style="padding:6px;width:100%">
+          <option ${c.visa==='Schengen Turistik'?'selected':''}>Schengen Turistik</option>
+          <option ${c.visa==='Çalışma Vizesi'?'selected':''}>Çalışma Vizesi</option>
+          <option ${c.visa==='Öğrenci Vizesi'?'selected':''}>Öğrenci Vizesi</option>
+          <option ${c.visa==='Aile Birleşimi'?'selected':''}>Aile Birleşimi</option>
+        </select></div>
         <div class="fi"><div class="fl">Satış Temsilcisi</div><div class="fv">${c.rep}</div></div>
         <div class="fi"><div class="fl">Aşamada Gün</div><div class="fv" style="color:${c.days>7?'var(--red)':'var(--text)'}">${c.days} gün</div></div>
       </div>
