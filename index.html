@@ -641,7 +641,10 @@ function getTableData(){
       (c.phone&&c.phone.includes(sq))
     );
   }
-  if(tableRepFilter) data=data.filter(c=>c.rep===tableRepFilter);
+  if(tableRepFilter) data=data.filter(c=>{
+    const extra=getCurrentHandler(c);
+    return c.rep===tableRepFilter || (extra && extra.name===tableRepFilter);
+  });
   if(tableSort.col){
     const d=tableSort.dir==='asc'?1:-1;
     data.sort((a,b)=>{
@@ -1039,9 +1042,29 @@ function renderDashBody(){
   </div>`;
 }
 
+function getCurrentHandler(c){
+  if(WARN_EVRAK_S.includes(c.status)) return {name:c.evrakRep||'Henüz atanmadı',color:'#D97706'};
+  if(WARN_RANDEVU_S.includes(c.status)||c.status==='Tamamlandı') return {name:c.randevuRep||'Henüz atanmadı',color:'#7C3AED'};
+  return null;
+}
+function repCellHTML(c){
+  const salesCol=RCOLS[c.rep]||'#2563EB';
+  const extra=getCurrentHandler(c);
+  let html=`<div style="display:flex;align-items:center;gap:6px"><div class="av av-24" style="background:${salesCol};color:#fff">${initials(c.rep)}</div><span style="font-size:11px;color:var(--text2)">${(c.rep||'—').split(' ')[0]}</span></div>`;
+  if(extra){
+    html+=`<span style="color:var(--text3);font-size:11px">→</span><div style="display:flex;align-items:center;gap:6px"><div class="av av-24" style="background:${extra.color};color:#fff">${initials(extra.name)}</div><span style="font-size:11px;color:var(--text2)">${extra.name.split(' ')[0]}</span></div>`;
+  }
+  return `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">${html}</div>`;
+}
+
 // CUSTOMERS
 function renderCusts(){
-  const reps=[...new Set(customers.map(c=>c.rep).filter(r=>r&&r!=='—'))].sort();
+  const reps=[...new Set(customers.flatMap(c=>{
+    const list=[c.rep];
+    const extra=getCurrentHandler(c);
+    if(extra) list.push(extra.name);
+    return list;
+  }).filter(r=>r&&r!=='—'&&r!=='Henüz atanmadı'))].sort();
   const hasColFilter=tableSort.col||tableRepFilter||tableColSearch;
   document.getElementById('main-content').innerHTML=`
   <div class="filter-bar">
@@ -1116,7 +1139,6 @@ function renderRows(){
   cc.textContent=list.length+' Müşteri';
   if(!list.length){tb.innerHTML='<tr><td colspan="10" style="text-align:center;padding:48px;color:var(--text3)">Müşteri bulunamadı</td></tr>';return;}
   tb.innerHTML=list.map(c=>{
-    const col=RCOLS[c.rep]||'#2563EB';
     const rem=c.fee-c.prepay;
     const stale=c.days>7;
     return `<tr onclick="openPanel('${c.id}')">
@@ -1128,23 +1150,10 @@ function renderRows(){
       <td>${c.callTotal===0?'<span style="color:var(--text3)">—</span>':`<span style="color:var(--accent);font-weight:700;font-size:12px">📞${c.callTotal}</span><span style="color:var(--green);font-size:10px;margin-left:4px">${c.callReached}✓</span>`}</td>
       <td style="font-size:11px;color:${c.apptDate?'var(--accent)':'var(--text3)'}">${c.apptDate?'📅 '+fmtDate(c.apptDate):'—'}</td>
       <td style="font-size:11px;color:${rem<=0?'var(--green)':'var(--amber)'};font-weight:600">${rem<=0?'✓ Tam':'₺'+rem.toLocaleString('tr-TR')}</td>
-      <td><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><div class="av av-24" style="background:${col};color:#fff">${initials(c.rep)}</div><span style="font-size:11px;color:var(--text2)">${c.rep.split(' ')[0]}</span>${CU.role==='management'?currentDeptBadge(c):''}</div></td>
+      <td>${repCellHTML(c)}</td>
       <td style="font-size:10px;color:var(--text3)">🕐 ${c.lastMod}</td>
     </tr>`;
   }).join('');
-}
-
-function currentDeptBadge(c){
-  let label,color,bg;
-  if(WARN_SALES_S.includes(c.status)) return '';
-  else if(WARN_EVRAK_S.includes(c.status)){
-    color='#D97706';bg='#FEF3C7';
-    label=c.evrakRep?('🗂 '+c.evrakRep.split(' ')[0]):'Evraka atanacak';
-  } else if(WARN_RANDEVU_S.includes(c.status)){
-    color='#7C3AED';bg='#EDE9FE';
-    label=c.randevuRep?('📅 '+c.randevuRep.split(' ')[0]):'Randevuya atanacak';
-  } else return '';
-  return `<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:${bg};color:${color};margin-left:2px;white-space:nowrap">${label}</span>`;
 }
 
 function fC(q){const sq=q.toLowerCase();filtered=customers.filter(c=>c.name.toLowerCase().includes(sq)||c.id.toLowerCase().includes(sq)||c.phone.includes(sq));renderRows();}
