@@ -316,11 +316,11 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 .b-ops{background:var(--green-bg);color:var(--green)}
 
 /* ===== KANBAN ===== */
-.kanban{display:flex;gap:10px;overflow-x:auto;padding-bottom:12px;transform:rotateX(180deg)}.kanban-col{transform:rotateX(180deg)}
-.k-col{min-width:180px;max-width:180px}
-.k-head{padding:7px 11px;border-radius:7px 7px 0 0;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;display:flex;align-items:center;justify-content:space-between}
+.kanban{display:flex;gap:10px;padding-bottom:8px;min-width:max-content}.kanban-col{}
+.k-col{min-width:180px;max-width:180px;display:flex;flex-direction:column;max-height:calc(100vh - 160px)}
+.k-head{padding:7px 11px;border-radius:7px 7px 0 0;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
 .k-cnt{background:rgba(0,0,0,.1);border-radius:20px;padding:1px 6px;font-size:10px}
-.k-body{background:var(--bg);border-radius:0 0 7px 7px;padding:6px;min-height:80px;display:flex;flex-direction:column;gap:6px;border:1px solid var(--border);border-top:none}
+.k-body{background:var(--bg);border-radius:0 0 7px 7px;padding:6px;min-height:80px;display:flex;flex-direction:column;gap:6px;border:1px solid var(--border);border-top:none;overflow-y:auto;flex:1}
 .kcard{background:#fff;border:1px solid var(--border);border-radius:7px;padding:10px;cursor:pointer;transition:all .12s}
 .kcard:hover{border-color:var(--accent);box-shadow:0 2px 8px rgba(37,99,235,.08)}
 .kcard-name{font-size:12px;font-weight:600;color:var(--text)}
@@ -1322,7 +1322,7 @@ async function renderSold(){
 
 function renderPipeline(){
   const mc=document.getElementById('main-content');
-  mc.innerHTML='<div style="font-size:12px;color:var(--text2);margin-bottom:14px">Karta tıklayarak detaya girin. <span style="color:var(--red)">Kırmızı = 7+ gün bekliyor.</span></div><div class="kanban" id="kanban"></div>';
+  mc.innerHTML='<div style="font-size:12px;color:var(--text2);margin-bottom:10px">Karta tıklayarak detaya girin. <span style="color:var(--red)">Kırmızı = 7+ gün bekliyor.</span></div><div style="overflow-x:auto;padding-bottom:8px"><div class="kanban" id="kanban"></div></div>';
   const vis=getVis();
   document.getElementById('kanban').innerHTML=KSTAGES.map(stage=>{
     const cards=vis.filter(c=>c.status===stage);
