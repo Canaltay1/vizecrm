@@ -2175,10 +2175,12 @@ async function addCustomer(){
   const visa_type=document.getElementById('nm-visa').value;
   const assignTo=document.getElementById('nm-rep').value;
   if(!assignTo){toast('Lütfen bir satış temsilcisi seçin','red');return;}
+  const btn=document.querySelector('#add-modal .btn-primary');
+  if(btn){btn.disabled=true;btn.textContent='Kaydediliyor...';}
   try{
     const res=await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'addCustomer',name,phone,email,country,visa_type,fee,prepay:pre,assignTo,token:CU.token})});
     const d=await res.json();
-    if(!d.success){toast('Hata: '+JSON.stringify(d.error||'Eklenemedi'),'red');return;}
+    if(!d.success){toast('Hata: '+JSON.stringify(d.error||'Eklenemedi'),'red');if(btn){btn.disabled=false;btn.textContent='✓ Müşteriyi Kaydet';}return;}
     await loadCustomers();
     closeModal();
     if(document.getElementById('cust-tbody'))renderRows();
@@ -2187,6 +2189,7 @@ async function addCustomer(){
     ['nm-name','nm-phone','nm-email','nm-fee','nm-pre','nm-rem'].forEach(i=>{const el=document.getElementById(i);if(el)el.value='';});
   }catch(e){
     toast('Bağlantı hatası','red');
+    if(btn){btn.disabled=false;btn.textContent='✓ Müşteriyi Kaydet';}
   }
 }
 </script>
