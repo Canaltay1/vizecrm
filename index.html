@@ -2184,13 +2184,11 @@ async function addCustomer(){
     const res=await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'addCustomer',name,phone,email,country,visa_type,fee,prepay:pre,assignTo,token:CU.token})});
     const d=await res.json();
     if(!d.success){toast('Hata: '+JSON.stringify(d.error||'Eklenemedi'),'red');if(btn){btn.disabled=false;btn.textContent='✓ Müşteriyi Kaydet';}addingCustomer=false;return;}
-    if(d.duplicate){toast('⚠️ Bu telefon numarası az önce kaydedildi ('+d.id+')','amber');closeModal();await loadCustomers();if(document.getElementById('cust-tbody'))renderRows();addingCustomer=false;return;}
+    if(d.duplicate){toast('⚠️ Bu telefon numarası az önce kaydedildi ('+d.id+')','amber');closeModal();addingCustomer=false;loadCustomers().then(()=>{if(document.getElementById('cust-tbody'))renderRows();});return;}
     closeModal();
-    await loadCustomers();
-    if(document.getElementById('cust-tbody'))renderRows();
-    if(document.getElementById('kanban'))renderPipeline();
     toast('✓ '+name+' eklendi — '+d.id+' ('+d.assignedTo+'\'a atandı)','green');
     ['nm-name','nm-phone','nm-email','nm-fee','nm-pre','nm-rem'].forEach(i=>{const el=document.getElementById(i);if(el)el.value='';});
+    loadCustomers().then(()=>{if(document.getElementById('cust-tbody'))renderRows();if(document.getElementById('kanban'))renderPipeline();});
   }catch(e){
     toast('Bağlantı hatası','red');
     if(btn){btn.disabled=false;btn.textContent='✓ Müşteriyi Kaydet';}
