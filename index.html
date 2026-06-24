@@ -1186,7 +1186,8 @@ function renderCusts(){
       <div class="tbl-label" id="cust-count">— Müşteri</div>
       <div style="display:flex;gap:8px;align-items:center">
         <button class="btn btn-ghost btn-sm" onclick="resetAllFilters()">↺ Tüm filtreleri sıfırla</button>
-        <button class="btn btn-ghost btn-sm" onclick="exportExcel()">📥 Excel</button>
+        ${CU.role==='management'?`<button class="btn btn-ghost btn-sm" onclick="exportExcel()">📥 Excel${(tableRepFilter||tableColSearch||tableSort.col)?` <span style="background:var(--accent);color:#fff;border-radius:10px;padding:0px 5px;font-size:9px;margin-left:2px">Filtrelenmiş</span>`:''}
+        </button>`:''}
       </div>
     </div>
     <div style="overflow-x:auto">
@@ -2056,6 +2057,7 @@ async function addNewDocument(id){
 }
 
 async function exportExcel(){
+  if(CU.role!=='management'){toast('Bu işlem için yetkiniz yok','red');return;}
   const list=getTableData();
   if(!list||list.length===0){toast('Dışa aktarılacak müşteri yok','red');return;}
   toast('⏳ Excel hazırlanıyor...','blue');
