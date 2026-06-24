@@ -2055,17 +2055,107 @@ async function addNewDocument(id){
   }
 }
 
-function exportExcel(){
-  if(!customers||customers.length===0){toast('Dışa aktarılacak müşteri yok','red');return;}
-  const headers=['Dosya No','Ad Soyad','Telefon','Ülke','Vize Türü','Aşama','Satış Temsilcisi','Oluşturma Tarihi'];
-  const rows=customers.map(c=>[c.id,c.name,c.phone,c.country,c.visa,c.status,c.rep,c.created]);
-  const data=[headers,...rows];
-  const ws=XLSX.utils.aoa_to_sheet(data);
-  ws['!cols']=[{wch:15},{wch:20},{wch:15},{wch:15},{wch:20},{wch:20},{wch:20},{wch:20}];
-  const wb=XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb,ws,'Müşteriler');
-  XLSX.writeFile(wb,`vizecrm-musteriler-${new Date().toISOString().slice(0,10)}.xlsx`);
-  toast('✓ Excel dosyası indirildi','green');
+async function exportExcel(){
+  const list=getTableData();
+  if(!list||list.length===0){toast('Dışa aktarılacak müşteri yok','red');return;}
+  toast('⏳ Excel hazırlanıyor...','blue');
+  try{
+    // Her müşteri için detay çek
+    const details={};
+    await Promise.all(list.map(async c=>{
+      try{
+        const res=await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'getCustomerDetail',customerId:c.id,token:CU.token})});
+        const d=await res.json();
+        details[c.id]=d;
+      }catch(e){details[c.id]={};}
+    }));
+
+    const headers=[
+      'Dosya No','Ad Soyad','Telefon','E-posta',
+      'Ülke','Vize Türü','Aşama',
+      'Satış Temsilcisi','Evrak Sorumlusu','Randevu Sorumlusu',
+      'Toplam Ücret (₺)','Ön Ödeme (₺)','Kalan Ödeme (₺)','Ödeme Durumu',
+      'Randevu Tarihi','Randevu Saati','Randevu Merkezi',
+      'İade Durumu','İade Tutarı (₺)','İade Nedeni',
+      'Refakatçi Sayısı','Refakatçiler',
+      'Not Sayısı','Son Not',
+      'Arama Sayısı','Ulaşılan Arama',
+      'Belge Sayısı','Tamamlanan Belge',
+      'Kayıt Tarihi','Son Güncelleme','Kaynak'
+    ];
+
+    const rows=list.map(c=>{
+      const d=details[c.id]||{};
+      const notes=d.notes||[];
+      const calls=d.calls||[];
+      const docs=d.documents||[];
+      const companions=d.companions||[];
+      const rem=(c.fee||0)-(c.prepay||0);
+      const paidFull=c.fee>0&&rem<=0;
+      const completedDocs=docs.filter(x=>x.status==='Onaylandı').length;
+      const reachedCalls=calls.filter(x=>x.result==='ulasildi').length;
+      const companionList=companions.map(cp=>cp.name+(cp.relationship?'('+cp.relationship+')':'')).join(', ');
+      const lastNote=notes.length>0?notes[0].text?.replace(/\n/g,' '):'';
+      return [
+        c.id,
+        c.name,
+        c.phone,
+        c.email||'',
+        c.country,
+        c.visa,
+        c.status,
+        c.rep||'—',
+        c.evrakRep||'—',
+        c.randevuRep||'—',
+        c.fee||0,
+        c.prepay||0,
+        rem>0?rem:0,
+        paidFull?'Tahsil Edildi':'Bekliyor',
+        c.apptDate||'',
+        c.apptTime||'',
+        c.apptCenter||'',
+        c.refundStatus||'Yok',
+        c.refundAmount||0,
+        c.refundReason||'',
+        companions.length,
+        companionList,
+        notes.length,
+        lastNote,
+        calls.length,
+        reachedCalls,
+        docs.length,
+        completedDocs,
+        c.created||'',
+        c.lastMod||'',
+        c.source==='google_forms'?'Google Form':'Manuel'
+      ];
+    });
+
+    const data=[headers,...rows];
+    const ws=XLSX.utils.aoa_to_sheet(data);
+
+    // Kolon genişlikleri
+    ws['!cols']=[
+      {wch:16},{wch:22},{wch:14},{wch:25},
+      {wch:14},{wch:18},{wch:22},
+      {wch:18},{wch:18},{wch:18},
+      {wch:14},{wch:14},{wch:14},{wch:14},
+      {wch:14},{wch:12},{wch:14},
+      {wch:14},{wch:14},{wch:20},
+      {wch:12},{wch:30},
+      {wch:10},{wch:40},
+      {wch:12},{wch:14},
+      {wch:12},{wch:16},
+      {wch:18},{wch:18},{wch:12}
+    ];
+
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,ws,'Müşteriler');
+    XLSX.writeFile(wb,`vizecrm-detayli-${new Date().toISOString().slice(0,10)}.xlsx`);
+    toast('✓ Detaylı Excel indirildi ('+list.length+' müşteri)','green');
+  }catch(e){
+    toast('Excel oluşturulurken hata oluştu','red');
+  }
 }
 
 async function openAddUserForm(){
