@@ -316,7 +316,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 .b-ops{background:var(--green-bg);color:var(--green)}
 
 /* ===== KANBAN ===== */
-.kanban{display:flex;gap:10px;overflow-x:auto;padding-bottom:12px}
+.kanban{display:flex;gap:10px;overflow-x:auto;padding-bottom:12px;transform:rotateX(180deg)}.kanban-col{transform:rotateX(180deg)}
 .k-col{min-width:180px;max-width:180px}
 .k-head{padding:7px 11px;border-radius:7px 7px 0 0;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;display:flex;align-items:center;justify-content:space-between}
 .k-cnt{background:rgba(0,0,0,.1);border-radius:20px;padding:1px 6px;font-size:10px}
@@ -621,7 +621,7 @@ async function loadCustomers(){
       days:r.last_modified_at?Math.max(0,Math.floor((Date.now()-new Date(r.last_modified_at).getTime())/86400000)):0,
       lastMod:fmtDT(r.last_modified_at),
       created:r.created_at||null,lastModRaw:r.last_modified_at||null,
-      apptDate:r.appt_date||'',
+      apptDate:r.appt_date||'',apptTime:r.appt_time||'',apptCenter:r.appt_center||'',
       refundStatus:r.refund_status||'',refundAmount:r.refund_amount||0,refundReason:r.refund_reason||'',refundDate:r.refund_date||'',
       refundRequestedBy:r.refund_requested_by||'',refundRequestedAt:r.refund_requested_at||null,
       callTotal:r.call_total||0,callReached:r.call_reached||0
@@ -1328,7 +1328,7 @@ function renderPipeline(){
     const cards=vis.filter(c=>c.status===stage);
     const col=KCOLS[stage]||'#6B7280';
     const bgHex=col+'15';
-    return `<div class="k-col">
+    return `<div class="k-col kanban-col">
       <div class="k-head" style="background:${bgHex};color:${col};border-color:${col}33;border:1px solid ${col}33;border-bottom:none">
         <span>${stage}</span><span class="k-cnt">${cards.length}</span>
       </div>
@@ -1605,7 +1605,7 @@ async function openPanel(id, readonly=false){
       c={id:raw.file_number,name:esc(raw.full_name),phone:esc(raw.phone),email:esc(raw.email||''),
         country:esc(raw.country),visa:esc(raw.visa_type),rep:raw.rep_name||'—',
         fee:raw.service_fee||0,prepay:raw.prepayment||0,status:raw.status,
-        apptDate:raw.appt_date||'',days:0,lastMod:'—',lastModRaw:raw.last_modified_at,
+        apptDate:raw.appt_date||'',apptTime:raw.appt_time||'',apptCenter:raw.appt_center||'',days:0,lastMod:'—',lastModRaw:raw.last_modified_at,
         refundStatus:raw.refund_status,refundAmount:raw.refund_amount,
         refundReason:raw.refund_reason,refundDate:raw.refund_date,
         refundRequestedBy:raw.refund_requested_by,refundRequestedAt:raw.refund_requested_at,
@@ -1710,11 +1710,36 @@ async function openPanel(id, readonly=false){
   </div>
 
   <div class="ps">
-    <div class="ps-head"><div class="ps-title">📅 Randevu Tarihi</div></div>
-    <div class="ps-body" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-      <input type="date" class="fi2" id="ap-${c.id}" value="${c.apptDate||''}" style="max-width:170px">
-      <button class="btn btn-primary btn-sm" onclick="saveAppt('${c.id}')">Kaydet</button>
-      <span style="font-size:12px;color:${c.apptDate?'var(--accent)':'var(--text3)'}">${c.apptDate?'📅 '+fmtDate(c.apptDate):'Henüz girilmedi'}</span>
+    <div class="ps-head"><div class="ps-title">📅 Randevu Bilgileri</div></div>
+    <div class="ps-body" style="display:flex;flex-direction:column;gap:10px">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <label style="font-size:10px;color:var(--text3);font-weight:600;text-transform:uppercase">Tarih</label>
+          <input type="date" class="fi2" id="ap-${c.id}" value="${c.apptDate||''}" style="padding:6px;width:150px">
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <label style="font-size:10px;color:var(--text3);font-weight:600;text-transform:uppercase">Saat</label>
+          <input type="time" class="fi2" id="ap-time-${c.id}" value="${c.apptTime||''}" style="padding:6px;width:120px">
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <label style="font-size:10px;color:var(--text3);font-weight:600;text-transform:uppercase">Merkez</label>
+          <select class="fi2" id="ap-center-${c.id}" style="padding:6px;width:150px">
+            <option value="">Seçiniz...</option>
+            <option value="İstanbul" ${(c.apptCenter||'')==='İstanbul'?'selected':''}>İstanbul</option>
+            <option value="Ankara" ${(c.apptCenter||'')==='Ankara'?'selected':''}>Ankara</option>
+            <option value="İzmir" ${(c.apptCenter||'')==='İzmir'?'selected':''}>İzmir</option>
+            <option value="Antalya" ${(c.apptCenter||'')==='Antalya'?'selected':''}>Antalya</option>
+            <option value="Gaziantep" ${(c.apptCenter||'')==='Gaziantep'?'selected':''}>Gaziantep</option>
+          </select>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px;justify-content:flex-end">
+          <label style="font-size:10px;opacity:0">_</label>
+          <button class="btn btn-primary btn-sm" onclick="saveAppt('${c.id}')">Kaydet</button>
+        </div>
+      </div>
+      ${c.apptDate?`<div style="font-size:12px;color:var(--accent);background:var(--surface2);padding:8px 12px;border-radius:8px;border:1px solid var(--border)">
+        📅 ${fmtDate(c.apptDate)}${c.apptTime?' · ⏰ '+c.apptTime:''}${c.apptCenter?' · 📍 '+c.apptCenter:''}
+      </div>`:'<div style="font-size:12px;color:var(--text3)">Henüz randevu girilmedi</div>'}
     </div>
   </div>
 
@@ -2077,15 +2102,17 @@ async function deleteCustomer(id){
 
 async function saveAppt(id){
   const v=document.getElementById('ap-'+id)?.value||'';
+  const t=document.getElementById('ap-time-'+id)?.value||'';
+  const center=document.getElementById('ap-center-'+id)?.value||'';
   try{
-    const res=await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'updateAppt',customerId:id,apptDate:v,token:CU.token})});
+    const res=await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'updateAppt',customerId:id,apptDate:v,apptTime:t,apptCenter:center,token:CU.token})});
     const d=await res.json();
     if(!d.success){toast('Hata: '+JSON.stringify(d.error||'Kaydedilemedi'),'red');return;}
     await loadCustomers();
     await openPanel(id);
     if(document.getElementById('cust-tbody'))renderRows();
     if(document.getElementById('kanban'))renderPipeline();
-    toast(v?'📅 Randevu: '+fmtDate(v):'Tarih temizlendi','blue');
+    toast(v?'📅 Randevu kaydedildi':'Randevu temizlendi','blue');
   }catch(e){
     toast('Bağlantı hatası','red');
   }
