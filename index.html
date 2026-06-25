@@ -1721,8 +1721,8 @@ async function openPanel(id, readonly=false){
       <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px 14px">
         <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">🗓 İstenilen Randevu Tarihi</div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <input type="text" class="fi2" id="ap-desired-${c.id}" value="${c.desiredApptDate||''}" placeholder="Örn: Temmuz sonu, 15-20 Ağustos..." style="padding:6px;flex:1;min-width:180px" ${panelReadOnly?'disabled':''}>
-          <button class="btn btn-primary btn-sm" onclick="saveDesiredAppt('${c.id}')" ${panelReadOnly?'disabled':''}>Kaydet</button>
+          <input type="text" class="fi2" id="ap-desired-${c.id}" value="${c.desiredApptDate||''}" placeholder="Örn: Temmuz sonu, 15-20 Ağustos..." style="padding:6px;flex:1;min-width:180px" ${(panelReadOnly||CU.role==='evrak'||CU.role==='randevu')?'disabled':''}>
+          ${(CU.role==='sales'||CU.role==='management')?`<button class="btn btn-primary btn-sm" onclick="saveDesiredAppt('${c.id}')">Kaydet</button>`:''}
         </div>
         ${c.desiredApptDate?`<div style="font-size:11px;color:var(--accent);margin-top:8px">📌 ${c.desiredApptDate}</div>`:''}
       </div>
