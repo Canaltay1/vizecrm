@@ -1856,6 +1856,7 @@ async function openPanel(id, readonly=false){
     </div>
   </div>
 
+
   <div class="ps">
     <div class="ps-head"><div class="ps-title">Belgeler</div></div>
     <div class="ps-body" style="display:flex;flex-direction:column;gap:6px">
@@ -1879,6 +1880,21 @@ async function openPanel(id, readonly=false){
     </div>
     `:''}
     </div>
+  </div>
+
+  <div class="ps">
+    <div class="ps-head">
+      <div class="ps-title">📁 Yüklenen Dosyalar</div>
+      <span style="font-size:11px;color:var(--text2)" id="file-count-${c.id}">Yükleniyor...</span>
+    </div>
+    <div class="ps-body" style="display:flex;flex-direction:column;gap:6px" id="file-list-${c.id}">
+      <div style="font-size:12px;color:var(--text3)">Dosyalar yükleniyor...</div>
+    </div>
+    ${panelReadOnly?'':` <div style="margin-top:8px;padding:10px;background:var(--surface2);border:2px dashed var(--border);border-radius:8px;text-align:center">
+      <input type="file" id="file-input-${c.id}" accept=".jpg,.jpeg,.png,.webp,.pdf,.doc,.docx" style="display:none" onchange="uploadFile('${c.id}',this)">
+      <button class="btn btn-ghost btn-sm" onclick="document.getElementById('file-input-${c.id}').click()">📎 Dosya Seç ve Yükle</button>
+      <div style="font-size:10px;color:var(--text3);margin-top:4px">JPG, PNG, PDF, DOC, DOCX · Max 15MB</div>
+    </div>`}
   </div>
 
   <div class="ps" id="cl-${c.id}">
@@ -2004,6 +2020,75 @@ async function openPanel(id, readonly=false){
   </div>`:''}
   `}
   `;
+  // Dosyaları arka planda yükle
+  loadFiles(c.id);
+}
+
+async function loadFiles(customerId){
+  const listEl=document.getElementById('file-list-'+customerId);
+  const countEl=document.getElementById('file-count-'+customerId);
+  if(!listEl)return;
+  try{
+    const res=await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'getFiles',customerId,token:CU.token})});
+    const d=await res.json();
+    const files=d.files||[];
+    if(countEl)countEl.textContent=files.length+' dosya';
+    if(files.length===0){
+      listEl.innerHTML='<div style="font-size:12px;color:var(--text3)">Henüz dosya yüklenmedi.</div>';
+      return;
+    }
+    function fmtSize(b){if(b<1024)return b+'B';if(b<1048576)return (b/1024).toFixed(1)+'KB';return (b/1048576).toFixed(1)+'MB';}
+    function fmtFileName(n){const parts=n.split('_');return parts.length>1?parts.slice(1).join('_'):n;}
+    const canDelete=CU.role==='management'||CU.role==='evrak'||CU.role==='sales';
+    listEl.innerHTML=files.map(f=>`
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:var(--surface2);border-radius:7px;border:1px solid var(--border);gap:8px">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">📎 ${fmtFileName(f.name)}</div>
+          <div style="font-size:10px;color:var(--text3)">${fmtSize(f.size)}</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          <a href="${f.url}" target="_blank" class="btn btn-ghost btn-sm" style="text-decoration:none">⬇ İndir</a>
+          ${canDelete?`<button class="btn btn-danger btn-sm" onclick="deleteFile('${customerId}','${f.name}')">✕</button>`:''}
+        </div>
+      </div>`).join('');
+  }catch(e){
+    if(listEl)listEl.innerHTML='<div style="font-size:12px;color:var(--text3)">Dosyalar yüklenemedi.</div>';
+  }
+}
+
+async function uploadFile(customerId, input){
+  const file=input.files[0];
+  if(!file)return;
+  if(file.size>15*1024*1024){toast('Dosya 15MB\'dan büyük olamaz','red');input.value='';return;}
+  const btn=input.parentElement?.querySelector('button');
+  if(btn){btn.disabled=true;btn.textContent='Yükleniyor...';}
+  try{
+    const reader=new FileReader();
+    reader.onload=async(e)=>{
+      const base64=e.target.result;
+      const res=await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'uploadFile',customerId,fileName:file.name,fileData:base64,fileType:file.type,token:CU.token})});
+      const d=await res.json();
+      if(!d.success){toast('Yükleme hatası','red');}
+      else{toast('✓ Dosya yüklendi','green');loadFiles(customerId);}
+      if(btn){btn.disabled=false;btn.textContent='📎 Dosya Seç ve Yükle';}
+      input.value='';
+    };
+    reader.readAsDataURL(file);
+  }catch(e){
+    toast('Bağlantı hatası','red');
+    if(btn){btn.disabled=false;btn.textContent='📎 Dosya Seç ve Yükle';}
+  }
+}
+
+async function deleteFile(customerId, fileName){
+  if(!confirm('Bu dosyayı silmek istediğine emin misin?'))return;
+  try{
+    const res=await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'deleteFile',customerId,fileName,token:CU.token})});
+    const d=await res.json();
+    if(!d.success){toast('Silinemedi','red');return;}
+    toast('🗑 Dosya silindi','amber');
+    loadFiles(customerId);
+  }catch(e){toast('Bağlantı hatası','red');}
 }
 
 async function addCompanion(id){
