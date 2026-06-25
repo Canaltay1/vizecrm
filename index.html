@@ -623,6 +623,7 @@ async function loadCustomers(){
       created:r.created_at||null,lastModRaw:r.last_modified_at||null,
       apptDate:r.appt_date||'',apptTime:r.appt_time||'',apptCenter:r.appt_center||'',
       desiredApptDate:r.desired_appt_date||'',confirmedApptDate:r.confirmed_appt_date||'',
+      visaStartDate:r.visa_start_date||'',visaEndDate:r.visa_end_date||'',visaRenewal:r.visa_renewal||false,
       refundStatus:r.refund_status||'',refundAmount:r.refund_amount||0,refundReason:r.refund_reason||'',refundDate:r.refund_date||'',
       refundRequestedBy:r.refund_requested_by||'',refundRequestedAt:r.refund_requested_at||null,
       callTotal:r.call_total||0,callReached:r.call_reached||0
@@ -1248,7 +1249,7 @@ function renderRows(){
       <td><b>${c.name}</b>${stale?` <span style="font-size:9px;background:var(--red-bg);color:var(--red);border-radius:4px;padding:1px 5px">${c.days}g</span>`:''}</td>
       <td><a class="phone-link" href="tel:${c.phone}" onclick="event.stopPropagation()">${c.phone}</a></td>
       <td>${c.country}</td>
-      <td><span class="badge ${SCLS[c.status]||'b-lead'}">${c.status}</span></td>
+      <td><span class="badge ${SCLS[c.status]||'b-lead'}">${c.status}</span>${c.visaRenewal?'<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:#FEF3C7;color:#D97706;margin-left:4px">🔔 Vize Yenileme</span>':''}</td>
       <td>${c.callTotal===0?'<span style="color:var(--text3)">—</span>':`<span style="color:var(--accent);font-weight:700;font-size:12px">📞${c.callTotal}</span><span style="color:var(--green);font-size:10px;margin-left:4px">${c.callReached}✓</span>`}</td>
       <td style="font-size:11px;color:${c.apptDate?'var(--accent)':'var(--text3)'}">${c.apptDate?'📅 '+fmtDate(c.apptDate):'—'}</td>
       <td style="font-size:11px;color:${rem<=0?'var(--green)':'var(--amber)'};font-weight:600">${rem<=0?'✓ Tam':'₺'+rem.toLocaleString('tr-TR')}</td>
@@ -1862,6 +1863,30 @@ async function openPanel(id, readonly=false){
     </div>
   </div>
 
+  ${(c.status==='Tamamlandı'||c.visaStartDate||c.visaEndDate)?`
+  <div class="ps">
+    <div class="ps-head"><div class="ps-title">🛂 Vize Bilgileri</div></div>
+    <div class="ps-body" style="display:flex;flex-direction:column;gap:10px">
+      <div style="display:flex;gap:12px;flex-wrap:wrap">
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <label style="font-size:10px;color:var(--text3);font-weight:600;text-transform:uppercase">Vize Başlangıç</label>
+          <input type="date" class="fi2" id="vs-start-${c.id}" value="${c.visaStartDate||''}" style="padding:6px;width:160px" ${panelReadOnly?'disabled':''}>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <label style="font-size:10px;color:var(--text3);font-weight:600;text-transform:uppercase">Vize Bitiş</label>
+          <input type="date" class="fi2" id="vs-end-${c.id}" value="${c.visaEndDate||''}" style="padding:6px;width:160px" ${panelReadOnly?'disabled':''}>
+        </div>
+        ${!panelReadOnly?`<div style="display:flex;flex-direction:column;gap:4px;justify-content:flex-end">
+          <label style="font-size:10px;opacity:0">_</label>
+          <button class="btn btn-primary btn-sm" onclick="saveVisa('${c.id}')">Kaydet</button>
+        </div>`:''}
+      </div>
+      ${c.visaEndDate?`<div style="font-size:11px;padding:8px 12px;border-radius:8px;background:${new Date(c.visaEndDate)<new Date()?'var(--red-bg)':'var(--green-bg)'};color:${new Date(c.visaEndDate)<new Date()?'var(--red)':'var(--green)'}">
+        ${new Date(c.visaEndDate)<new Date()?'⚠️ Vize süresi doldu — '+fmtDate(c.visaEndDate):'✅ Vize geçerli — '+fmtDate(c.visaStartDate)+' – '+fmtDate(c.visaEndDate)}
+      </div>`:''}
+    </div>
+  </div>`:''}
+
   <div class="ps">
     <div class="ps-head"><div class="ps-title">Aşama Geçmişi</div></div>
     <div class="ps-body">
@@ -2206,6 +2231,19 @@ async function deleteCustomer(id){
   }
 }
 
+async function saveVisa(id){
+  const start=document.getElementById('vs-start-'+id)?.value||'';
+  const end=document.getElementById('vs-end-'+id)?.value||'';
+  try{
+    const res=await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'updateVisa',customerId:id,visaStartDate:start,visaEndDate:end,token:CU.token})});
+    const d=await res.json();
+    if(!d.success){toast('Hata: '+JSON.stringify(d.error||'Kaydedilemedi'),'red');return;}
+    await loadCustomers();
+    await openPanel(id);
+    if(document.getElementById('cust-tbody'))renderRows();
+    toast('✓ Vize bilgileri kaydedildi','green');
+  }catch(e){toast('Bağlantı hatası','red');}
+}
 async function saveDesiredAppt(id){
   const v=document.getElementById('ap-desired-'+id)?.value.trim()||'';
   try{
