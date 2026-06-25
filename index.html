@@ -1864,14 +1864,17 @@ async function openPanel(id, readonly=false){
       return `
       <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:var(--surface2);border-radius:7px;border:1px solid var(--border)">
         <span style="font-size:12px;color:var(--text)">📄 ${d.doc_name}</span>
+        <div style="display:flex;align-items:center;gap:6px">
         ${panelReadOnly
           ?`<span class="badge ${d.status==='Onaylandı'?'b-docs-done':d.status==='Yüklendi'?'b-ops':'b-lead'}">${d.status}</span>`
           :`<select class="sel" style="font-size:11px;padding:3px 8px;width:auto" onchange="updateDocStatus('${c.id}','${d.doc_name}',this.value)">
             <option value="Bekleniyor" ${d.status==='Bekleniyor'?'selected':''}>⏳ Bekleniyor</option>
             <option value="Yüklendi" ${d.status==='Yüklendi'?'selected':''}>📤 Yüklendi</option>
             <option value="Onaylandı" ${d.status==='Onaylandı'?'selected':''}>✓ Onaylandı</option>
-          </select>`
+          </select>
+          <button class="btn btn-danger btn-sm" onclick="deleteDocument('${c.id}','${d.doc_name}')">✕</button>`
         }
+        </div>
       </div>`;}).join('')}
     ${(!panelReadOnly&&(CU.role==='management'||CU.role==='evrak'))?`
     <div style="display:flex;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
@@ -2091,6 +2094,16 @@ async function deleteFile(customerId, fileName){
   }catch(e){toast('Bağlantı hatası','red');}
 }
 
+async function deleteDocument(customerId, docName){
+  if(!confirm('"'+docName+'" belgesini silmek istediğine emin misin?'))return;
+  try{
+    const res=await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'deleteDocument',customerId,docName,token:CU.token})});
+    const d=await res.json();
+    if(!d.success){toast('Hata: '+JSON.stringify(d.error||'Silinemedi'),'red');return;}
+    await openPanel(customerId);
+    toast('🗑 Belge silindi','amber');
+  }catch(e){toast('Bağlantı hatası','red');}
+}
 async function addCompanion(id){
   const name=(document.getElementById('cp-name-'+id)?.value||'').trim();
   const relationship=document.getElementById('cp-rel-'+id)?.value||'Diğer';
