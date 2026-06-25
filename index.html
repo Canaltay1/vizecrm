@@ -1624,7 +1624,7 @@ async function openPanel(id, readonly=false){
   document.getElementById('detail-panel').classList.add('open');
   document.getElementById('panel-body').innerHTML='<div style="padding:40px;text-align:center;color:var(--text3)">Yükleniyor...</div>';
 
-  let notes=[],calls=[],salesReps=[],docMap={},documents=[],history=[],companions=[];
+  let notes=[],calls=[],salesReps=[],docMap={},documents=[],history=[],companions=[],applications=[];
   try{
     const res=await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'getCustomerDetail',customerId:id,token:CU.token})});
     const d=await res.json();
@@ -1634,6 +1634,10 @@ async function openPanel(id, readonly=false){
     documents.forEach(x=>docMap[x.doc_name]=x.status);
     history=(d.history||[]).map(h=>({l:h.status,m:fmtDT(h.changed_at)+' · '+(h.changed_by||'—')}));
     companions=(d.companions||[]).map(cp=>({...cp,name:esc(cp.name),relationship:esc(cp.relationship||'Diğer')}));
+    // Başvuruları ayrı çek
+    const res2=await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'getApplications',customerId:id,token:CU.token})});
+    const d2=await res2.json();
+    applications=(d2.applications||[]);
   }catch(e){}
   if(CU.role==='management' && !window.salesRepCache){
     try{
@@ -1711,6 +1715,55 @@ async function openPanel(id, readonly=false){
           <option value="Diğer">Diğer</option>
         </select>
         <button class="btn btn-primary btn-sm" onclick="addCompanion('${c.id}')">+ Ekle</button>
+      </div>`}
+    </div>
+  </div>
+
+  <div class="ps">
+    <div class="ps-head"><div class="ps-title">🌍 Başvurular <span style="font-weight:400;color:var(--text2)">(${applications.length})</span></div></div>
+    <div class="ps-body" style="display:flex;flex-direction:column;gap:10px">
+      ${applications.length===0?'<div style="font-size:12px;color:var(--text3)">Henüz başvuru eklenmedi.</div>':''}
+      ${applications.map(ap=>`
+        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px 14px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <div style="font-size:13px;font-weight:700;color:var(--text)">${ap.country||'—'}</div>
+            ${panelReadOnly?'':`<button class="btn btn-danger btn-sm" onclick="deleteApplication('${c.id}','${ap.id}')">✕</button>`}
+          </div>
+          <div style="font-size:11px;color:var(--text2);display:flex;flex-wrap:wrap;gap:8px">
+            ${ap.applicant_name?`<span>👤 ${ap.applicant_name}</span>`:''}
+            ${ap.appt_date?`<span>📅 ${fmtDate(ap.appt_date)}${ap.appt_time?' · ⏰ '+ap.appt_time:''}</span>`:'<span style="color:var(--text3)">📅 Randevu yok</span>'}
+            ${ap.appt_center?`<span>📍 ${ap.appt_center}</span>`:''}
+          </div>
+          ${ap.notes?`<div style="font-size:11px;color:var(--text3);margin-top:6px;border-top:1px solid var(--border);padding-top:6px">📌 ${ap.notes}</div>`:''}
+          ${panelReadOnly?'':` <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:6px;padding-top:8px;border-top:1px solid var(--border)">
+            <input class="fi2" type="text" id="ap-apn-${ap.id}" value="${ap.applicant_name||''}" placeholder="Başvuran adı" style="padding:5px;font-size:11px">
+            <select class="fi2" id="ap-apc-${ap.id}" style="padding:5px;font-size:11px">
+              <option value="">Merkez seç...</option>
+              ${['İstanbul','Ankara','İzmir','Antalya','Gaziantep'].map(m=>`<option value="${m}" ${ap.appt_center===m?'selected':''}>${m}</option>`).join('')}
+            </select>
+            <input class="fi2" type="date" id="ap-apd-${ap.id}" value="${ap.appt_date||''}" style="padding:5px;font-size:11px">
+            <input class="fi2" type="time" id="ap-apt-${ap.id}" value="${ap.appt_time||''}" style="padding:5px;font-size:11px">
+            <input class="fi2" type="text" id="ap-apn2-${ap.id}" value="${ap.notes||''}" placeholder="Not..." style="padding:5px;font-size:11px;grid-column:span 2">
+            <button class="btn btn-primary btn-sm" style="grid-column:span 2" onclick="updateApplication('${c.id}','${ap.id}')">💾 Güncelle</button>
+          </div>`}
+        </div>`).join('')}
+      ${panelReadOnly?'':` <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;border-style:dashed">
+        <div style="font-size:11px;font-weight:600;color:var(--text2);margin-bottom:8px">+ Yeni Başvuru Ekle</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+          <select class="fi2" id="new-ap-country-${c.id}" style="padding:5px;font-size:11px;grid-column:span 2">
+            <option value="">Ülke seç *</option>
+            ${['🇩🇪 Almanya','🇬🇧 İngiltere','🇫🇷 Fransa','🇮🇹 İtalya','🇪🇸 İspanya','🇳🇱 Hollanda','🇧🇪 Belçika','🇦🇹 Avusturya','🇨🇭 İsviçre','🇵🇹 Portekiz','🇬🇷 Yunanistan','🇸🇪 İsveç','🇳🇴 Norveç','🇩🇰 Danimarka','🇵🇱 Polonya','🇨🇿 Çekya','🇭🇺 Macaristan','🇮🇪 İrlanda','🇫🇮 Finlandiya','🇷🇴 Romanya','🇧🇬 Bulgaristan','🇺🇸 Amerika'].map(o=>`<option>${o}</option>`).join('')}
+          </select>
+          <input class="fi2" type="text" id="new-ap-name-${c.id}" placeholder="Başvuran adı (boş=ana müşteri)" style="padding:5px;font-size:11px;grid-column:span 2">
+          <input class="fi2" type="date" id="new-ap-date-${c.id}" style="padding:5px;font-size:11px">
+          <input class="fi2" type="time" id="new-ap-time-${c.id}" style="padding:5px;font-size:11px">
+          <select class="fi2" id="new-ap-center-${c.id}" style="padding:5px;font-size:11px">
+            <option value="">Merkez...</option>
+            ${['İstanbul','Ankara','İzmir','Antalya','Gaziantep'].map(m=>`<option>${m}</option>`).join('')}
+          </select>
+          <input class="fi2" type="text" id="new-ap-notes-${c.id}" placeholder="Not..." style="padding:5px;font-size:11px">
+          <button class="btn btn-primary btn-sm" style="grid-column:span 2" onclick="addApplication('${c.id}')">+ Ekle</button>
+        </div>
       </div>`}
     </div>
   </div>
@@ -2231,6 +2284,47 @@ async function deleteCustomer(id){
   }
 }
 
+async function addApplication(id){
+  const country=document.getElementById('new-ap-country-'+id)?.value;
+  if(!country){toast('Ülke seçiniz','red');return;}
+  const name=document.getElementById('new-ap-name-'+id)?.value.trim()||'';
+  const apptDate=document.getElementById('new-ap-date-'+id)?.value||'';
+  const apptTime=document.getElementById('new-ap-time-'+id)?.value||'';
+  const apptCenter=document.getElementById('new-ap-center-'+id)?.value||'';
+  const text=document.getElementById('new-ap-notes-'+id)?.value.trim()||'';
+  try{
+    const res=await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'addApplication',customerId:id,country,name,apptDate,apptTime,apptCenter,text,token:CU.token})});
+    const d=await res.json();
+    if(!d.success){toast('Hata: '+JSON.stringify(d.error||'Eklenemedi'),'red');return;}
+    await openPanel(id);
+    toast('✓ Başvuru eklendi','green');
+  }catch(e){toast('Bağlantı hatası','red');}
+}
+async function updateApplication(customerId,appId){
+  const name=document.getElementById('ap-apn-'+appId)?.value.trim()||'';
+  const apptDate=document.getElementById('ap-apd-'+appId)?.value||'';
+  const apptTime=document.getElementById('ap-apt-'+appId)?.value||'';
+  const apptCenter=document.getElementById('ap-apc-'+appId)?.value||'';
+  const text=document.getElementById('ap-apn2-'+appId)?.value.trim()||'';
+  const country=document.querySelector(`[id="ap-apc-${appId}"]`)?.closest('.ps-body > div')?.querySelector('div:first-child div')?.textContent||'';
+  try{
+    const res=await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'updateApplication',customerId,companionId:appId,name,apptDate,apptTime,apptCenter,text,token:CU.token})});
+    const d=await res.json();
+    if(!d.success){toast('Hata: '+JSON.stringify(d.error||'Güncellenemedi'),'red');return;}
+    await openPanel(customerId);
+    toast('✓ Başvuru güncellendi','green');
+  }catch(e){toast('Bağlantı hatası','red');}
+}
+async function deleteApplication(customerId,appId){
+  if(!confirm('Bu başvuruyu silmek istediğine emin misin?'))return;
+  try{
+    const res=await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'deleteApplication',customerId,companionId:appId,token:CU.token})});
+    const d=await res.json();
+    if(!d.success){toast('Hata: '+JSON.stringify(d.error||'Silinemedi'),'red');return;}
+    await openPanel(customerId);
+    toast('🗑 Başvuru silindi','amber');
+  }catch(e){toast('Bağlantı hatası','red');}
+}
 async function saveVisa(id){
   const start=document.getElementById('vs-start-'+id)?.value||'';
   const end=document.getElementById('vs-end-'+id)?.value||'';
