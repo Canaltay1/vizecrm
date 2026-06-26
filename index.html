@@ -625,6 +625,7 @@ async function loadCustomers(){
       apptDate:r.appt_date||'',apptTime:r.appt_time||'',apptCenter:r.appt_center||'',
       desiredApptDate:r.desired_appt_date||'',confirmedApptDate:r.confirmed_appt_date||'',
       visaStartDate:r.visa_start_date||'',visaEndDate:r.visa_end_date||'',visaRenewal:r.visa_renewal||false,
+      tc:r.tc_kimlik||'',
       refundStatus:r.refund_status||'',refundAmount:r.refund_amount||0,refundReason:r.refund_reason||'',refundDate:r.refund_date||'',
       refundRequestedBy:r.refund_requested_by||'',refundRequestedAt:r.refund_requested_at||null,
       callTotal:r.call_total||0,callReached:r.call_reached||0
@@ -1695,6 +1696,7 @@ async function openPanel(id, readonly=false){
         <div class="fi"><div class="fl">Ad Soyad</div><input class="fi2" id="ed-name-${c.id}" value="${c.name}" style="padding:6px;width:100%" ${panelReadOnly?'disabled':''}></div>
         <div class="fi"><div class="fl">Telefon</div><input class="fi2" id="ed-phone-${c.id}" value="${c.phone}" style="padding:6px;width:100%" ${panelReadOnly?'disabled':''}></div>
         <div class="fi"><div class="fl">E-posta</div><input class="fi2" id="ed-email-${c.id}" value="${c.email||''}" style="padding:6px;width:100%" ${panelReadOnly?'disabled':''}></div>
+        <div class="fi"><div class="fl">TC</div><input class="fi2" id="ed-tc-${c.id}" value="${c.tc||''}" placeholder="TC Kimlik No" style="padding:6px;width:100%" maxlength="11" ${panelReadOnly?'disabled':''}></div>
         <div class="fi"><div class="fl">Ülke</div><select class="fi2" id="ed-country-${c.id}" style="padding:6px;width:100%" ${panelReadOnly?'disabled':''}>
           ${['🇩🇪 Almanya','🇬🇧 İngiltere','🇫🇷 Fransa','🇮🇹 İtalya','🇪🇸 İspanya','🇳🇱 Hollanda','🇧🇪 Belçika','🇦🇹 Avusturya','🇨🇭 İsviçre','🇵🇹 Portekiz','🇬🇷 Yunanistan','🇸🇪 İsveç','🇳🇴 Norveç','🇩🇰 Danimarka','🇵🇱 Polonya','🇨🇿 Çekya','🇭🇺 Macaristan','🇮🇪 İrlanda','🇫🇮 Finlandiya','🇷🇴 Romanya','🇧🇬 Bulgaristan','🇺🇸 Amerika'].map(o=>`<option ${c.country===o?'selected':''}>${o}</option>`).join('')}
         </select></div>
@@ -2219,9 +2221,10 @@ async function updateCustomerInfo(id){
   const em=document.getElementById('ed-email-'+id)?.value.trim();
   const vi=document.getElementById('ed-visa-'+id)?.value.trim();
   const co=document.getElementById('ed-country-'+id)?.value;
+  const tc=document.getElementById('ed-tc-'+id)?.value.trim()||'';
   if(!nm||!ph){toast('Ad ve Telefon zorunludur','red');return;}
   try{
-    const res=await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'updateCustomerInfo',customerId:id,name:nm,phone:ph,email:em,visa_type:vi,country:co,token:CU.token})});
+    const res=await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'updateCustomerInfo',customerId:id,name:nm,phone:ph,email:em,visa_type:vi,country:co,tc,token:CU.token})});
     const d=await res.json();
     if(!d.success){toast('Hata: '+JSON.stringify(d.error||'Kaydedilemedi'),'red');return;}
     await loadCustomers();
