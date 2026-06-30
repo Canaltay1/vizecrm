@@ -1013,8 +1013,9 @@ function showPaymentDetail(){
 
 function showAllCustomersDetail(){
   const all=getDashFiltered();
-  let searchQ='', regFrom='', regTo='', byUser='';
+  let searchQ='', regFrom='', regTo='', byUser='', byRep='';
   const updaters=[...new Set(all.map(c=>c.lastModBy).filter(Boolean))].sort();
+  const reps=[...new Set(all.map(c=>c.rep).filter(r=>r&&r!=='—'))].sort();
   const modal=document.createElement('div');
   modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
   modal.onclick=e=>{if(e.target===modal)modal.remove();};
@@ -1026,6 +1027,7 @@ function showAllCustomersDetail(){
       if(regFrom&&(!c.created||c.created.slice(0,10)<regFrom))return false;
       if(regTo&&(!c.created||c.created.slice(0,10)>regTo))return false;
       if(byUser&&c.lastModBy!==byUser)return false;
+      if(byRep&&c.rep!==byRep)return false;
       return true;
     });
   }
@@ -1043,7 +1045,7 @@ function showAllCustomersDetail(){
         <td style="padding:9px 14px"><span class="badge ${SCLS[c.status]||'b-lead'}" style="font-size:10px">${c.status}</span></td>
         <td style="padding:9px 14px;color:var(--text2)">${c.rep||'—'}</td>
         <td style="padding:9px 14px;text-align:right;color:${rem<=0?'var(--green)':'var(--amber)'};font-weight:600">${rem<=0?'✓ Tam':'₺'+rem.toLocaleString('tr-TR')}</td>
-        <td style="padding:9px 14px;font-size:11px;color:var(--text3)">${c.created?c.created.slice(0,10).split('-').reverse().join('.'):'—'}</td>
+        <td style="padding:9px 14px;font-size:11px;color:var(--text3)">${c.created?fmtDT(c.created):'—'}</td>
         <td style="padding:9px 14px;font-size:11px;color:var(--text3)">${c.lastModBy||'—'}</td>
       </tr>`;
     }).join('');
@@ -1074,7 +1076,11 @@ function showAllCustomersDetail(){
             <option value="">Son güncelleyen: Tümü</option>
             ${updaters.map(u=>`<option value="${u}">${u}</option>`).join('')}
           </select>
-          <button class="btn btn-ghost btn-sm" onclick="document.getElementById('all-cust-search').value='';document.getElementById('all-cust-from').value='';document.getElementById('all-cust-to').value='';document.getElementById('all-cust-user').value='';searchQ='';regFrom='';regTo='';byUser='';document.getElementById('all-cust-tbody').innerHTML=renderList();">✕ Temizle</button>
+          <select id="all-cust-rep" style="padding:7px 10px;border:1px solid var(--border);border-radius:8px;font-size:12px">
+            <option value="">Satış Temsilcisi: Tümü</option>
+            ${reps.map(r=>`<option value="${r}">${r}</option>`).join('')}
+          </select>
+          <button id="all-cust-reset" class="btn btn-ghost btn-sm">✕ Temizle</button>
         </div>
       </div>
       <div style="overflow-y:auto;flex:1">
@@ -1101,6 +1107,16 @@ function showAllCustomersDetail(){
   document.getElementById('all-cust-from').onchange=function(){regFrom=this.value;document.getElementById('all-cust-tbody').innerHTML=renderList();};
   document.getElementById('all-cust-to').onchange=function(){regTo=this.value;document.getElementById('all-cust-tbody').innerHTML=renderList();};
   document.getElementById('all-cust-user').onchange=function(){byUser=this.value;document.getElementById('all-cust-tbody').innerHTML=renderList();};
+  document.getElementById('all-cust-rep').onchange=function(){byRep=this.value;document.getElementById('all-cust-tbody').innerHTML=renderList();};
+  document.getElementById('all-cust-reset').onclick=function(){
+    searchQ='';regFrom='';regTo='';byUser='';byRep='';
+    document.getElementById('all-cust-search').value='';
+    document.getElementById('all-cust-from').value='';
+    document.getElementById('all-cust-to').value='';
+    document.getElementById('all-cust-user').value='';
+    document.getElementById('all-cust-rep').value='';
+    document.getElementById('all-cust-tbody').innerHTML=renderList();
+  };
 }
 
 function exportAllCustomersExcel(){
@@ -1388,7 +1404,6 @@ function renderDashBody(){
   const activeCount=all.filter(c=>c.status!=='Tamamlandı'&&c.status!=='İptal').length;
   // Başvuru ücretleri de filtreye dahil - customers'daki toplam
   const totalCollected=getRevenueFiltered().reduce((s,c)=>s+(c.prepay||0),0);
-  const paidList=all.filter(c=>(c.prepay||0)>0).sort((a,b)=>(b.prepay||0)-(a.prepay||0));
   const pendingList=all.filter(c=>(c.fee||0)-(c.prepay||0)>0);
   const pendingTotal=pendingList.reduce((s,c)=>s+((c.fee||0)-(c.prepay||0)),0);
   const cancelledCount=all.filter(c=>c.status==='İptal').length;
