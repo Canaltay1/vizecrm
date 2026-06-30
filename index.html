@@ -262,7 +262,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 
 /* ===== STAT CARDS ===== */
 .stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px}
-.stats-grid-5{display:grid;grid-template-columns:repeat(6,1fr);gap:16px;margin-bottom:24px}
+.stats-grid-5{display:grid;grid-template-columns:repeat(5,1fr);gap:16px;margin-bottom:24px}
 .stat-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;position:relative}
 .stat-card::after{content:'';position:absolute;top:0;left:0;right:0;height:3px;border-radius:12px 12px 0 0}
 .stat-card.c-blue::after{background:var(--accent)}
@@ -626,6 +626,7 @@ async function loadCustomers(){
       desiredApptDate:r.desired_appt_date||'',confirmedApptDate:r.confirmed_appt_date||'',
       visaStartDate:r.visa_start_date||'',visaEndDate:r.visa_end_date||'',visaRenewal:r.visa_renewal||false,
       tc:r.tc_kimlik||'',
+      lastModBy:r.last_modified_by||'',
       refundStatus:r.refund_status||'',refundAmount:r.refund_amount||0,refundReason:r.refund_reason||'',refundDate:r.refund_date||'',
       refundRequestedBy:r.refund_requested_by||'',refundRequestedAt:r.refund_requested_at||null,
       callTotal:r.call_total||0,callReached:r.call_reached||0
@@ -984,14 +985,26 @@ function showPaymentDetail(){
 
 function showAllCustomersDetail(){
   const all=getDashFiltered();
-  let searchQ='';
+  let searchQ='', regFrom='', regTo='', byUser='';
+  const updaters=[...new Set(all.map(c=>c.lastModBy).filter(Boolean))].sort();
   const modal=document.createElement('div');
   modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
   modal.onclick=e=>{if(e.target===modal)modal.remove();};
 
-  function renderList(){
+  function getFilteredList(){
     const q=searchQ.toLowerCase();
-    const list=q?all.filter(c=>(c.name||'').toLowerCase().includes(q)||(c.id||'').toLowerCase().includes(q)||(c.phone||'').includes(q)):all;
+    return all.filter(c=>{
+      if(q&&!((c.name||'').toLowerCase().includes(q)||(c.id||'').toLowerCase().includes(q)||(c.phone||'').includes(q)))return false;
+      if(regFrom&&(!c.created||c.created.slice(0,10)<regFrom))return false;
+      if(regTo&&(!c.created||c.created.slice(0,10)>regTo))return false;
+      if(byUser&&c.lastModBy!==byUser)return false;
+      return true;
+    });
+  }
+
+  function renderList(){
+    const list=getFilteredList();
+    document.getElementById('all-cust-count').textContent=list.length+' müşteri';
     return list.map(c=>{
       const rem=(c.fee||0)-(c.prepay||0);
       return `<tr onclick="this.closest('div[style*=fixed]').remove();openPanel('${c.id}')" style="cursor:pointer;border-bottom:1px solid var(--border)" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
@@ -1001,21 +1014,38 @@ function showAllCustomersDetail(){
         <td style="padding:9px 14px"><span class="badge ${SCLS[c.status]||'b-lead'}" style="font-size:10px">${c.status}</span></td>
         <td style="padding:9px 14px;color:var(--text2)">${c.rep||'—'}</td>
         <td style="padding:9px 14px;text-align:right;color:${rem<=0?'var(--green)':'var(--amber)'};font-weight:600">${rem<=0?'✓ Tam':'₺'+rem.toLocaleString('tr-TR')}</td>
+        <td style="padding:9px 14px;font-size:11px;color:var(--text3)">${c.created?c.created.slice(0,10).split('-').reverse().join('.'):'—'}</td>
+        <td style="padding:9px 14px;font-size:11px;color:var(--text3)">${c.lastModBy||'—'}</td>
       </tr>`;
     }).join('');
   }
 
   modal.innerHTML=`
-    <div style="background:var(--bg);border-radius:16px;width:100%;max-width:820px;max-height:85vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
-      <div style="padding:20px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px">
-        <div>
-          <div style="font-size:16px;font-weight:700;color:var(--text)">📋 Tüm Müşteriler</div>
-          <div style="font-size:13px;color:var(--accent);font-weight:600;margin-top:2px">${all.length} müşteri (filtreli)</div>
+    <div style="background:var(--bg);border-radius:16px;width:100%;max-width:980px;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
+      <div style="padding:18px 24px;border-bottom:1px solid var(--border)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div>
+            <div style="font-size:16px;font-weight:700;color:var(--text)">📋 Tüm Müşteriler</div>
+            <div id="all-cust-count" style="font-size:13px;color:var(--accent);font-weight:600;margin-top:2px">${all.length} müşteri</div>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button class="btn btn-ghost btn-sm" onclick="exportAllCustomersExcel()">📥 Excel</button>
+            <button onclick="this.closest('div[style*=fixed]').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text3)">✕</button>
+          </div>
         </div>
-        <div style="display:flex;gap:8px;align-items:center">
-          <input id="all-cust-search" type="text" placeholder="İsim, telefon, dosya no..." style="padding:7px 12px;border:1px solid var(--border);border-radius:8px;font-size:12px;width:200px">
-          <button class="btn btn-ghost btn-sm" onclick="exportAllCustomersExcel()">📥 Excel</button>
-          <button onclick="this.closest('div[style*=fixed]').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text3)">✕</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <input id="all-cust-search" type="text" placeholder="İsim, telefon, dosya no..." style="padding:7px 12px;border:1px solid var(--border);border-radius:8px;font-size:12px;width:180px">
+          <div style="display:flex;align-items:center;gap:4px">
+            <label style="font-size:10px;color:var(--text3)">Kayıt:</label>
+            <input id="all-cust-from" type="date" style="padding:6px 8px;border:1px solid var(--border);border-radius:8px;font-size:11px">
+            <span style="font-size:11px;color:var(--text3)">—</span>
+            <input id="all-cust-to" type="date" style="padding:6px 8px;border:1px solid var(--border);border-radius:8px;font-size:11px">
+          </div>
+          <select id="all-cust-user" style="padding:7px 10px;border:1px solid var(--border);border-radius:8px;font-size:12px">
+            <option value="">Son güncelleyen: Tümü</option>
+            ${updaters.map(u=>`<option value="${u}">${u}</option>`).join('')}
+          </select>
+          <button class="btn btn-ghost btn-sm" onclick="document.getElementById('all-cust-search').value='';document.getElementById('all-cust-from').value='';document.getElementById('all-cust-to').value='';document.getElementById('all-cust-user').value='';searchQ='';regFrom='';regTo='';byUser='';document.getElementById('all-cust-tbody').innerHTML=renderList();">✕ Temizle</button>
         </div>
       </div>
       <div style="overflow-y:auto;flex:1">
@@ -1028,31 +1058,32 @@ function showAllCustomersDetail(){
               <th style="padding:9px 14px;text-align:left;font-weight:600;color:var(--text2);border-bottom:1px solid var(--border)">Aşama</th>
               <th style="padding:9px 14px;text-align:left;font-weight:600;color:var(--text2);border-bottom:1px solid var(--border)">Satış Temsilcisi</th>
               <th style="padding:9px 14px;text-align:right;font-weight:600;color:var(--text2);border-bottom:1px solid var(--border)">Ödeme</th>
+              <th style="padding:9px 14px;text-align:left;font-weight:600;color:var(--text2);border-bottom:1px solid var(--border)">Kayıt Tarihi</th>
+              <th style="padding:9px 14px;text-align:left;font-weight:600;color:var(--text2);border-bottom:1px solid var(--border)">Son Güncelleyen</th>
             </tr>
           </thead>
           <tbody id="all-cust-tbody">${renderList()}</tbody>
         </table>
-        ${all.length===0?'<div style="padding:40px;text-align:center;color:var(--text3)">Filtreli dönemde müşteri yok.</div>':''}
       </div>
     </div>`;
   document.body.appendChild(modal);
-  document.getElementById('all-cust-search').oninput=function(){
-    searchQ=this.value;
-    document.getElementById('all-cust-tbody').innerHTML=renderList();
-  };
+  document.getElementById('all-cust-search').oninput=function(){searchQ=this.value;document.getElementById('all-cust-tbody').innerHTML=renderList();};
+  document.getElementById('all-cust-from').onchange=function(){regFrom=this.value;document.getElementById('all-cust-tbody').innerHTML=renderList();};
+  document.getElementById('all-cust-to').onchange=function(){regTo=this.value;document.getElementById('all-cust-tbody').innerHTML=renderList();};
+  document.getElementById('all-cust-user').onchange=function(){byUser=this.value;document.getElementById('all-cust-tbody').innerHTML=renderList();};
 }
 
 function exportAllCustomersExcel(){
   const all=getDashFiltered();
   if(all.length===0){toast('Dışa aktarılacak müşteri yok','red');return;}
-  const headers=['Dosya No','Ad Soyad','Telefon','E-posta','Ülke','Vize Türü','Aşama','Satış Temsilcisi','Evrak Sorumlusu','Randevu Sorumlusu','Toplam Ücret (₺)','Ön Ödeme (₺)','Kalan (₺)','Kayıt Tarihi','Son Güncelleme'];
+  const headers=['Dosya No','Ad Soyad','Telefon','E-posta','Ülke','Vize Türü','Aşama','Satış Temsilcisi','Evrak Sorumlusu','Randevu Sorumlusu','Toplam Ücret (₺)','Ön Ödeme (₺)','Kalan (₺)','Kayıt Tarihi','Son Güncelleme','Son Güncelleyen'];
   const rows=all.map(c=>{
     const rem=(c.fee||0)-(c.prepay||0);
-    return [c.id,c.name,c.phone,c.email||'',c.country,c.visa,c.status,c.rep||'—',c.evrakRep||'—',c.randevuRep||'—',c.fee||0,c.prepay||0,rem>0?rem:0,c.created||'',c.lastMod||''];
+    return [c.id,c.name,c.phone,c.email||'',c.country,c.visa,c.status,c.rep||'—',c.evrakRep||'—',c.randevuRep||'—',c.fee||0,c.prepay||0,rem>0?rem:0,c.created||'',c.lastMod||'',c.lastModBy||'—'];
   });
   const data=[headers,...rows];
   const ws=XLSX.utils.aoa_to_sheet(data);
-  ws['!cols']=[{wch:16},{wch:22},{wch:14},{wch:25},{wch:14},{wch:18},{wch:22},{wch:18},{wch:18},{wch:18},{wch:14},{wch:14},{wch:14},{wch:18},{wch:18}];
+  ws['!cols']=[{wch:16},{wch:22},{wch:14},{wch:25},{wch:14},{wch:18},{wch:22},{wch:18},{wch:18},{wch:18},{wch:14},{wch:14},{wch:14},{wch:18},{wch:18},{wch:18}];
   const wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,ws,'Tüm Müşteriler');
   XLSX.writeFile(wb,`tum-musteriler-${new Date().toISOString().slice(0,10)}.xlsx`);
@@ -1345,7 +1376,6 @@ function renderDashBody(){
     <div class="stat-card c-blue" style="cursor:pointer" onclick="showAllCustomersDetail()"><div class="stat-icon" style="background:var(--accent-l);color:var(--accent)">📋</div><div class="stat-val" style="color:var(--accent)">${all.length}</div><div class="stat-label">Tüm Müşteriler</div><div class="stat-trend" style="color:var(--accent);font-size:10px">Detay için tıkla →</div></div>
     <div class="stat-card c-green" style="cursor:pointer" onclick="showPaymentDetail()"><div class="stat-icon" style="background:var(--green-bg);color:var(--green)">💰</div><div class="stat-val" style="color:var(--green)">${fmtTL(totalCollected)}</div><div class="stat-label">Toplam Tahsilat</div><div class="stat-trend" style="color:var(--green);font-size:10px">Detay için tıkla →</div></div>
     <div class="stat-card c-amber"><div class="stat-icon" style="background:var(--amber-bg);color:var(--amber)">⏳</div><div class="stat-val" style="color:var(--amber)">${fmtTL(pendingTotal)}</div><div class="stat-label">Bekleyen Tahsilat</div><div class="stat-trend" style="color:var(--text2)">${pendingList.length} müşteride kalan</div></div>
-    <div class="stat-card c-blue"><div class="stat-icon" style="background:var(--accent-l);color:var(--accent)">📂</div><div class="stat-val" style="color:var(--accent)">${activeCount}</div><div class="stat-label">Aktif Başvuru</div></div>
     <div class="stat-card c-purple" style="cursor:pointer" onclick="showConsulateDetail()"><div class="stat-icon" style="background:#F3E8FF;color:#7C3AED">🛂</div><div class="stat-val" style="color:#7C3AED">${consulateList.length}</div><div class="stat-label">Sonuç Bekleyenler</div><div class="stat-trend" style="color:#7C3AED;font-size:10px">Detay için tıkla →</div></div>
     <div class="stat-card c-red"><div class="stat-icon" style="background:var(--red-bg);color:var(--red)">✕</div><div class="stat-val" style="color:var(--red)">${cancelledCount}</div><div class="stat-label">İptal Edilen</div></div>
   </div>
