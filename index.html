@@ -1784,9 +1784,9 @@ async function openPanel(id, readonly=false){
             <span style="font-size:12px;font-weight:600;color:var(--text)">👤 ${cp.name}</span>
             <span style="font-size:11px;color:var(--text3);margin-left:8px">${cp.relationship||'Diğer'}</span>
           </div>
-          ${panelReadOnly?'':'<button class="btn btn-danger btn-sm" onclick="removeCompanion(\''+c.id+'\',\''+cp.id+'\')">✕</button>'}
+          ${(!panelReadOnly||panelSalesView)?'<button class="btn btn-danger btn-sm" onclick="removeCompanion(\''+c.id+'\',\''+cp.id+'\')">✕</button>':''}
         </div>`).join('')}
-      ${panelReadOnly?'':` <div style="display:flex;gap:6px;margin-top:6px;padding-top:8px;border-top:1px solid var(--border)">
+      ${(!panelReadOnly||panelSalesView)?` <div style="display:flex;gap:6px;margin-top:6px;padding-top:8px;border-top:1px solid var(--border)">
         <input class="fi2" id="cp-name-${c.id}" type="text" placeholder="Ad Soyad" style="padding:6px;flex:2;font-size:11px">
         <select class="sel" id="cp-rel-${c.id}" style="flex:1;font-size:11px">
           <option value="Eş">Eş</option>
@@ -1797,7 +1797,7 @@ async function openPanel(id, readonly=false){
           <option value="Diğer">Diğer</option>
         </select>
         <button class="btn btn-primary btn-sm" onclick="addCompanion('${c.id}')">+ Ekle</button>
-      </div>`}
+      </div>`:''}
     </div>
   </div>
 
@@ -1871,15 +1871,15 @@ async function openPanel(id, readonly=false){
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
           <div style="display:flex;flex-direction:column;gap:4px">
             <label style="font-size:10px;color:var(--text3)">Tarih</label>
-            <input type="date" class="fi2" id="ap-${c.id}" value="${c.apptDate||''}" style="padding:6px;width:150px">
+            <input type="date" class="fi2" id="ap-${c.id}" value="${c.apptDate||''}" style="padding:6px;width:150px" ${panelReadOnly?'disabled':''}>
           </div>
           <div style="display:flex;flex-direction:column;gap:4px">
             <label style="font-size:10px;color:var(--text3)">Saat</label>
-            <input type="time" class="fi2" id="ap-time-${c.id}" value="${c.apptTime||''}" style="padding:6px;width:120px">
+            <input type="time" class="fi2" id="ap-time-${c.id}" value="${c.apptTime||''}" style="padding:6px;width:120px" ${panelReadOnly?'disabled':''}>
           </div>
           <div style="display:flex;flex-direction:column;gap:4px">
             <label style="font-size:10px;color:var(--text3)">Merkez</label>
-            <select class="fi2" id="ap-center-${c.id}" style="padding:6px;width:150px">
+            <select class="fi2" id="ap-center-${c.id}" style="padding:6px;width:150px" ${panelReadOnly?'disabled':''}>
               <option value="">Seçiniz...</option>
               <option value="İstanbul" ${(c.apptCenter||'')==='İstanbul'?'selected':''}>İstanbul</option>
               <option value="Ankara" ${(c.apptCenter||'')==='Ankara'?'selected':''}>Ankara</option>
@@ -1888,7 +1888,7 @@ async function openPanel(id, readonly=false){
               <option value="Gaziantep" ${(c.apptCenter||'')==='Gaziantep'?'selected':''}>Gaziantep</option>
             </select>
           </div>
-          <button class="btn btn-primary btn-sm" onclick="saveAppt('${c.id}')">Kaydet</button>
+          ${panelReadOnly?'':`<button class="btn btn-primary btn-sm" onclick="saveAppt('${c.id}')">Kaydet</button>`}
         </div>
         ${c.apptDate?`<div style="font-size:11px;color:var(--green);margin-top:8px;font-weight:600">✅ ${fmtDate(c.apptDate)}${c.apptTime?' · ⏰ '+c.apptTime:''}${c.apptCenter?' · 📍 '+c.apptCenter:''}</div>`:'<div style="font-size:11px;color:var(--text3);margin-top:4px">Henüz kesinleşmedi</div>'}
       </div>
