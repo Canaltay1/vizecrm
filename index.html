@@ -1435,8 +1435,9 @@ function renderDashBody(){
   // Başvuru ücretleri de filtreye dahil - customers'daki toplam
   // Dönem seçiliyse allPayments'tan (doğru dönemsel veri), "Tüm Zamanlar"da customers.prepay kullan
   let totalCollected=0;
-  if(dashPeriod==='all'){
-    totalCollected=customers.filter(c=>(c.prepay||0)>0&&(!dashRep||c.rep===dashRep)&&(!dashCountry||c.country===dashCountry)).reduce((s,c)=>s+(c.prepay||0),0);
+  if(dashPeriod==='all' || allPayments.length===0){
+    // Tüm zamanlar VEYA customer_payments tablosu henüz oluşturulmadıysa → customers.prepay kullan
+    totalCollected=customers.filter(c=>(c.prepay||0)>0&&inPaymentPeriod(c,dashPeriod)&&(!dashRep||c.rep===dashRep)&&(!dashCountry||c.country===dashCountry)).reduce((s,c)=>s+(c.prepay||0),0);
   } else {
     const dashPays=allPayments.filter(p=>{
       if(!inMuhPeriod(p.payment_date,dashPeriod)) return false;
@@ -1937,7 +1938,7 @@ function renderMuhasebePage() {
     </div>
     <div class="stat-card">
       <div class="stat-icon" style="background:var(--accent-l);color:var(--accent)">👤</div>
-      <div class="stat-val">${gelirList.length?fmtTL(Math.round(totalGelir/gelirList.length)):'—'}</div>
+      <div class="stat-val">${uniqueCustCount?fmtTL(Math.round(totalGelir/uniqueCustCount)):'—'}</div>
       <div class="stat-label">Ortalama Müşteri Değeri</div>
     </div>
   </div>
@@ -2133,8 +2134,8 @@ function exportMuhAylik() {
 }
 
 function exportMuhRep() {
-  const { gelirList } = getMuhData(muhPeriod);
-  const repData = getRepBreakdown(gelirList);
+  const { enrichedPayList: repEnriched } = getMuhData(muhPeriod);
+  const repData = getRepBreakdown(repEnriched);
   if (!repData.length) { toast('Veri yok','red'); return; }
   const headers = ['Temsilci','Satış Sayısı','Toplam Ciro (₺)','Ortalama (₺)','Tam Ödeme Sayısı','Tam Ödeme %'];
   const rows = repData.map(([rep,v]) => [rep,v.txnCount,v.income,Math.round(v.income/v.txnCount),'—']);
@@ -2147,8 +2148,8 @@ function exportMuhRep() {
 }
 
 function exportMuhCountry() {
-  const { gelirList } = getMuhData(muhPeriod);
-  const countryData = getCountryBreakdown(gelirList);
+  const { enrichedPayList: cntEnriched } = getMuhData(muhPeriod);
+  const countryData = getCountryBreakdown(cntEnriched);
   if (!countryData.length) { toast('Veri yok','red'); return; }
   const headers = ['Ülke','Müşteri Sayısı','Toplam Ciro (₺)','Ortalama (₺)'];
   const rows = countryData.map(([c,v]) => [c,v.txnCount,v.income,Math.round(v.income/v.txnCount)]);
@@ -2207,11 +2208,11 @@ function exportMuhGider() {
 }
 
 function exportMuhTamRapor() {
-  const { gelirList, giderList, payList, totalGelir, totalGider, totalBekleyen, totalIade } = getMuhData(muhPeriod);
+  const { enrichedPayList: tamEP, giderList, payList, totalGelir, totalGider, totalBekleyen, totalIade } = getMuhData(muhPeriod);
   const netKar = totalGelir - totalGider;
   const monthly = getMonthlyBreakdown();
-  const repData = getRepBreakdown(gelirList);
-  const countryData = getCountryBreakdown(gelirList);
+  const repData = getRepBreakdown(tamEP);
+  const countryData = getCountryBreakdown(tamEP);
   const wb = XLSX.utils.book_new();
   const period = MUH_PERIODS.find(([v])=>v===muhPeriod)?.[1]||muhPeriod;
 
@@ -2224,7 +2225,7 @@ function exportMuhTamRapor() {
     ['Bekleyen Tahsilat (₺)', totalBekleyen],
     ['Toplam Iade (₺)', totalIade],
     ['Odeme Islemi Sayisi', payList.length],
-    ['Ort. Musteri Degeri (₺)', gelirList.length?Math.round(totalGelir/gelirList.length):0],
+    ['Ort. Musteri Degeri (₺)', payList.length?Math.round(totalGelir/payList.length):0],
     ['Rapor Tarihi', new Date().toLocaleDateString('tr-TR')],
   ];
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(ozet), 'Ozet');
