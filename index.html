@@ -1843,17 +1843,42 @@ function fmtMonthKey(key) {
 // allPayments boşsa customers.prepay'den fallback (eski sistem)
 // Dönen format: [{fileNo, name, country, rep, amount, date, fee, prepay}]
 function getIncomeItems(period, repFilter, countryFilter) {
-  // Her zaman customers.prepay kullan — tüm geçmiş data burada
-  // customer_payments tablosu henüz tüm geçmişi içermiyor
-  // Dönem filtresi payment_date veya created_at üzerinden uygulanır
-  return customers
-    .filter(c =>
-      (c.prepay||0) > 0 &&
-      inMuhPeriod(c.paymentDate || c.created, period) &&
-      (!repFilter || c.rep === repFilter) &&
-      (!countryFilter || c.country === countryFilter)
-    )
-    .map(c => ({
+  // Hibrit yaklaşım:
+  // - customer_payments'ta kaydı olan müşteri → oradan oku (doğru tarihli)
+  // - customer_payments'ta kaydı olmayan müşteri → customers.prepay'den oku (eski sistem)
+  const trackedIds = new Set(allPayments.map(p => p.customer_file_number));
+  const items = [];
+
+  // YENİ SİSTEM: customer_payments'tan, dönem filtresiyle
+  allPayments.filter(p => inMuhPeriod(p.payment_date, period)).forEach(p => {
+    const c = customers.find(x => x.id === p.customer_file_number);
+    if (repFilter && (c?.rep||'—') !== repFilter) return;
+    if (countryFilter && (c?.country||'') !== countryFilter) return;
+    items.push({
+      paymentId: p.id || '',
+      fileNo: p.customer_file_number,
+      name: c?.name || '—',
+      country: c?.country || '—',
+      rep: c?.rep || '—',
+      amount: Number(p.amount||0),
+      date: p.payment_date || '',
+      note: p.note || '',
+      fee: c?.fee || 0,
+      prepay: c?.prepay || 0,
+      lastMod: c?.lastMod || '',
+      lastModBy: c?.lastModBy || '',
+    });
+  });
+
+  // ESKİ SİSTEM: customer_payments'ta kaydı olmayan müşteriler
+  customers.filter(c =>
+    !trackedIds.has(c.id) &&
+    (c.prepay||0) > 0 &&
+    inMuhPeriod(c.paymentDate || c.created, period) &&
+    (!repFilter || c.rep === repFilter) &&
+    (!countryFilter || c.country === countryFilter)
+  ).forEach(c => {
+    items.push({
       paymentId: '',
       fileNo: c.id,
       name: c.name,
@@ -1866,7 +1891,10 @@ function getIncomeItems(period, repFilter, countryFilter) {
       prepay: c.prepay || 0,
       lastMod: c.lastMod || '',
       lastModBy: c.lastModBy || '',
-    }));
+    });
+  });
+
+  return items;
 }
 
 function getMuhData(period) {
@@ -1892,30 +1920,51 @@ function getMuhData(period) {
 }
 
 function getMonthlyBreakdown() {
+  const trackedIds = new Set(allPayments.map(p => p.customer_file_number));
   const monthMap = {};
-  // Aylık kırılım: her zaman customers.prepay kullan (tüm geçmiş dahil)
-  // allPayments sadece belirli dönem filtrelerinde kullanılır, burada değil
-  customers.filter(c=>(c.prepay||0)>0).forEach(c=>{
+  const custPerMonth = {}; // unique customer count per month
+
+  // YENİ SİSTEM: customer_payments'tan
+  allPayments.forEach(p => {
+    const k = (p.payment_date||'').slice(0,7);
+    if (!k) return;
+    if (!monthMap[k]) monthMap[k] = {income:0,expense:0,count:0,refund:0};
+    monthMap[k].income += Number(p.amount||0);
+    if (!custPerMonth[k]) custPerMonth[k] = new Set();
+    custPerMonth[k].add(p.customer_file_number);
+  });
+
+  // ESKİ SİSTEM: customer_payments'ta kaydı olmayan müşteriler
+  customers.filter(c => !trackedIds.has(c.id) && (c.prepay||0)>0).forEach(c => {
     const k = getMuhMonthKey(c.paymentDate||c.created);
     if (!k) return;
     if (!monthMap[k]) monthMap[k] = {income:0,expense:0,count:0,refund:0};
     monthMap[k].income += c.prepay||0;
-    monthMap[k].count++;
+    if (!custPerMonth[k]) custPerMonth[k] = new Set();
+    custPerMonth[k].add(c.id);
   });
-  // Gider (her zaman expenses tablosundan)
-  expenses.forEach(e=>{
+
+  // Müşteri sayılarını uygula
+  Object.keys(custPerMonth).forEach(k => {
+    if (monthMap[k]) monthMap[k].count = custPerMonth[k].size;
+  });
+
+  // Gider
+  expenses.forEach(e => {
     const k = getMuhMonthKey(e.date);
     if (!k) return;
     if (!monthMap[k]) monthMap[k] = {income:0,expense:0,count:0,refund:0};
     monthMap[k].expense += e.amount||0;
   });
+
   // İade
-  customers.filter(c=>c.refundStatus==='Gerçekleşti').forEach(c=>{
+  customers.filter(c=>c.refundStatus==='Gerçekleşti').forEach(c => {
     const k = getMuhMonthKey(c.refundDate||c.paymentDate||c.created);
     if (!k) return;
     if (!monthMap[k]) monthMap[k] = {income:0,expense:0,count:0,refund:0};
     monthMap[k].refund += c.refundAmount||0;
   });
+
   return Object.entries(monthMap).sort((a,b)=>b[0].localeCompare(a[0]));
 }
 
