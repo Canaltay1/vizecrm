@@ -594,7 +594,8 @@ let tableSort={col:'',dir:'asc'};
 let tableRepFilter='';
 let tableColSearch='';
 let panelReadOnly=false;
-let panelSalesView=false; // Satışçı kendi satışlarını görüntülerken: statü/ödeme gizli ama not/belge açık
+let panelSalesView=false;
+let panelPayments=[]; // Satışçı kendi satışlarını görüntülerken: statü/ödeme gizli ama not/belge açık
 let addingCustomer=false;
 
 // Dışarıdan (Google Form vb.) gelen serbest metinleri HTML'e basmadan önce temizler — XSS koruması
@@ -1710,15 +1711,20 @@ function renderConsulate(){
 
 // ===== MUHASEBE =====
 let expenses = [];
-const EXP_CATS = ['Kira','Maaş','Ofis','Reklam','Ulaşım','Diğer'];
+let allPayments = [];
+const EXP_CATS = ['Kira','Maas','Ofis','Reklam','Ulasim','Diger'];
 
 async function renderMuhasebe() {
-  document.getElementById('main-content').innerHTML = '<div style="padding:20px;color:var(--text3)">Yükleniyor...</div>';
+  document.getElementById('main-content').innerHTML = '<div style="padding:40px;text-align:center;color:var(--text3)">Yükleniyor...</div>';
   try {
-    const res = await fetch(EDGE_FUNCTION_URL, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'getExpenses',token:CU.token})});
-    const d = await res.json();
-    expenses = d.expenses || [];
-  } catch(e) { expenses = []; }
+    const [r1, r2] = await Promise.all([
+      fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'getExpenses',token:CU.token})}),
+      fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'getPaymentHistory',token:CU.token})})
+    ]);
+    const [d1, d2] = await Promise.all([r1.json(), r2.json()]);
+    expenses = d1.expenses || [];
+    allPayments = d2.payments || [];
+  } catch(e) { expenses = []; allPayments = []; }
   renderMuhasebePage();
 }
 
@@ -1736,180 +1742,469 @@ function inMuhPeriod(dateStr, period) {
   }
   if (period === 'today') return d.toDateString() === now.toDateString();
   if (period === 'week') {
-    const dow = now.getDay(); const diffToMon = dow === 0 ? 6 : dow - 1;
-    const start = new Date(now); start.setDate(now.getDate() - diffToMon); start.setHours(0,0,0,0);
+    const dow = now.getDay(), diff = dow===0?6:dow-1;
+    const start = new Date(now); start.setDate(now.getDate()-diff); start.setHours(0,0,0,0);
     return d >= start;
   }
-  if (period === 'month') return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
-  if (period === 'quarter') return d.getFullYear() === now.getFullYear() && Math.floor(d.getMonth()/3) === Math.floor(now.getMonth()/3);
-  if (period === 'year') return d.getFullYear() === now.getFullYear();
+  if (period === 'month') return d.getFullYear()===now.getFullYear() && d.getMonth()===now.getMonth();
+  if (period === 'quarter') return d.getFullYear()===now.getFullYear() && Math.floor(d.getMonth()/3)===Math.floor(now.getMonth()/3);
+  if (period === 'year') return d.getFullYear()===now.getFullYear();
   return true;
 }
 
+function getMuhMonthKey(dateStr) {
+  if (!dateStr) return null;
+  return dateStr.slice(0,7); // YYYY-MM
+}
+
+function fmtMonthKey(key) {
+  const MONTHS_TR = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+  const [y, m] = key.split('-');
+  return MONTHS_TR[parseInt(m)-1] + ' ' + y;
+}
+
+function getMuhData(period) {
+  const gelirList = customers.filter(c => (c.prepay||0) > 0 && inMuhPeriod(c.paymentDate || c.created, period));
+  const giderList = expenses.filter(e => inMuhPeriod(e.date, period));
+  const payList   = allPayments.filter(p => inMuhPeriod(p.payment_date, period));
+  const totalGelir  = gelirList.reduce((s,c) => s+(c.prepay||0), 0);
+  const totalGider  = giderList.reduce((s,e) => s+(e.amount||0), 0);
+  const totalIade   = customers.filter(c=>c.refundStatus==='Gerçekleşti').reduce((s,c)=>s+(c.refundAmount||0),0);
+  const bekleyenList = customers.filter(c => (c.fee||0)>(c.prepay||0) && c.status!=='İptal');
+  const totalBekleyen = bekleyenList.reduce((s,c)=>s+((c.fee||0)-(c.prepay||0)),0);
+  return { gelirList, giderList, payList, totalGelir, totalGider, totalIade, bekleyenList, totalBekleyen };
+}
+
+function getMonthlyBreakdown() {
+  const monthMap = {};
+  customers.filter(c=>(c.prepay||0)>0).forEach(c=>{
+    const k = getMuhMonthKey(c.paymentDate||c.created);
+    if (!k) return;
+    if (!monthMap[k]) monthMap[k] = {income:0,expense:0,count:0,refund:0};
+    monthMap[k].income += c.prepay||0;
+    monthMap[k].count++;
+  });
+  expenses.forEach(e=>{
+    const k = getMuhMonthKey(e.date);
+    if (!k) return;
+    if (!monthMap[k]) monthMap[k] = {income:0,expense:0,count:0,refund:0};
+    monthMap[k].expense += e.amount||0;
+  });
+  customers.filter(c=>c.refundStatus==='Gerçekleşti').forEach(c=>{
+    const k = getMuhMonthKey(c.refundDate||c.paymentDate||c.created);
+    if (!k) return;
+    if (!monthMap[k]) monthMap[k] = {income:0,expense:0,count:0,refund:0};
+    monthMap[k].refund += c.refundAmount||0;
+  });
+  return Object.entries(monthMap).sort((a,b)=>b[0].localeCompare(a[0]));
+}
+
+function getRepBreakdown(gelirList) {
+  const repMap = {};
+  gelirList.forEach(c=>{
+    const k = c.rep||'—';
+    if (!repMap[k]) repMap[k] = {count:0,income:0,fee:0,full:0};
+    repMap[k].count++;
+    repMap[k].income += c.prepay||0;
+    repMap[k].fee += c.fee||0;
+    if ((c.fee||0)>0 && (c.fee||0)===(c.prepay||0)) repMap[k].full++;
+  });
+  return Object.entries(repMap).sort((a,b)=>b[1].income-a[1].income);
+}
+
+function getCountryBreakdown(gelirList) {
+  const cMap = {};
+  gelirList.forEach(c=>{
+    const k = c.country||'Bilinmiyor';
+    if (!cMap[k]) cMap[k] = {count:0,income:0};
+    cMap[k].count++;
+    cMap[k].income += c.prepay||0;
+  });
+  return Object.entries(cMap).sort((a,b)=>b[1].income-a[1].income);
+}
+
 function renderMuhasebePage() {
-  // Gelir: payment_date bazlı, ödeme alınan müşteriler
-  const gelirList = customers.filter(c => (c.prepay || 0) > 0 && inMuhPeriod(c.paymentDate || c.created, muhPeriod));
-  const toplamGelir = gelirList.reduce((s, c) => s + (c.prepay || 0), 0);
-  const bekleyenList = customers.filter(c => (c.fee || 0) > (c.prepay || 0) && c.status !== 'İptal');
-  const toplamBekleyen = bekleyenList.reduce((s, c) => s + ((c.fee || 0) - (c.prepay || 0)), 0);
-
-  // Gider
-  const giderList = expenses.filter(e => inMuhPeriod(e.date, muhPeriod));
-  const toplamGider = giderList.reduce((s, e) => s + (e.amount || 0), 0);
-  const netKar = toplamGelir - toplamGider;
-
-  // Kategori bazlı gider
-  const catMap = {};
-  giderList.forEach(e => { catMap[e.category] = (catMap[e.category] || 0) + (e.amount || 0); });
-  const catList = Object.entries(catMap).sort((a,b) => b[1] - a[1]);
-  const maxCat = catList.length ? catList[0][1] : 1;
+  const { gelirList, giderList, payList, totalGelir, totalGider, totalIade, bekleyenList, totalBekleyen } = getMuhData(muhPeriod);
+  const netKar = totalGelir - totalGider;
+  const monthly = getMonthlyBreakdown();
+  const repData = getRepBreakdown(gelirList);
+  const countryData = getCountryBreakdown(gelirList);
+  const maxMonIncome = Math.max(...monthly.map(([,v])=>v.income), 1);
 
   const mc = document.getElementById('main-content');
   mc.innerHTML = `
-  <!-- FİLTRE BARI -->
+  <!-- FILTRE + AKSIYON -->
   <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:20px">
-    <select class="sel" id="muh-period-sel" onchange="muhPeriod=this.value;if(this.value!=='custom'){muhDateFrom='';muhDateTo='';}renderMuhasebePage()">
-      ${MUH_PERIODS.map(([v,l]) => `<option value="${v}" ${muhPeriod===v?'selected':''}>${l}</option>`).join('')}
+    <select class="sel" onchange="muhPeriod=this.value;if(this.value!=='custom'){muhDateFrom='';muhDateTo='';}renderMuhasebePage()">
+      ${MUH_PERIODS.map(([v,l])=>`<option value="${v}" ${muhPeriod===v?'selected':''}>${l}</option>`).join('')}
     </select>
-    ${muhPeriod==='custom' ? `
-      <input type="date" class="fi2" value="${muhDateFrom}" style="padding:5px 8px;font-size:12px;width:140px" onchange="muhDateFrom=this.value;renderMuhasebePage()">
-      <span style="color:var(--text3);font-size:12px">—</span>
-      <input type="date" class="fi2" value="${muhDateTo}" style="padding:5px 8px;font-size:12px;width:140px" onchange="muhDateTo=this.value;renderMuhasebePage()">
-    ` : ''}
+    ${muhPeriod==='custom'?`
+      <input type="date" class="fi2" value="${muhDateFrom}" style="padding:5px 8px;font-size:12px;width:135px" onchange="muhDateFrom=this.value;renderMuhasebePage()">
+      <span style="color:var(--text3)">—</span>
+      <input type="date" class="fi2" value="${muhDateTo}" style="padding:5px 8px;font-size:12px;width:135px" onchange="muhDateTo=this.value;renderMuhasebePage()">
+    `:''}
     <button class="btn btn-primary btn-sm" onclick="openAddExpenseModal()">+ Gider Ekle</button>
+    <button class="btn btn-ghost btn-sm" onclick="exportMuhTamRapor()" style="margin-left:auto">📥 Tam Rapor Excel</button>
   </div>
 
-  <!-- ÖZET KARTLAR -->
-  <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px">
-    <div class="stat-card c-green" style="cursor:pointer" onclick="document.getElementById('muh-gelir-sec').scrollIntoView({behavior:'smooth'})">
+  <!-- 6 OZET KART -->
+  <div class="stats-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:20px">
+    <div class="stat-card c-green" style="cursor:pointer" onclick="document.getElementById('muh-tahsilat').scrollIntoView({behavior:'smooth'})">
       <div class="stat-icon" style="background:var(--green-bg);color:var(--green)">💵</div>
-      <div class="stat-val" style="color:var(--green)">${fmtTL(toplamGelir)}</div>
-      <div class="stat-label">Toplam Tahsilat — ${gelirList.length} müşteri</div>
+      <div class="stat-val" style="color:var(--green)">${fmtTL(totalGelir)}</div>
+      <div class="stat-label">Tahsilat · ${gelirList.length} müşteri</div>
     </div>
-    <div class="stat-card c-red" style="cursor:pointer" onclick="document.getElementById('muh-gider-sec').scrollIntoView({behavior:'smooth'})">
+    <div class="stat-card c-red" style="cursor:pointer" onclick="document.getElementById('muh-gider').scrollIntoView({behavior:'smooth'})">
       <div class="stat-icon" style="background:var(--red-bg);color:var(--red)">📤</div>
-      <div class="stat-val" style="color:var(--red)">${fmtTL(toplamGider)}</div>
-      <div class="stat-label">Toplam Gider — ${giderList.length} kayıt</div>
+      <div class="stat-val" style="color:var(--red)">${fmtTL(totalGider)}</div>
+      <div class="stat-label">Toplam Gider · ${giderList.length} kayıt</div>
     </div>
-    <div class="stat-card ${netKar >= 0 ? 'c-green' : 'c-red'}">
+    <div class="stat-card ${netKar>=0?'c-green':'c-red'}">
       <div class="stat-icon" style="background:${netKar>=0?'var(--green-bg)':'var(--red-bg)'};color:${netKar>=0?'var(--green)':'var(--red)'}">📊</div>
-      <div class="stat-val" style="color:${netKar>=0?'var(--green)':'var(--red)'};">${fmtTL(Math.abs(netKar))}</div>
-      <div class="stat-label">Net ${netKar >= 0 ? 'Kâr' : 'Zarar'}</div>
+      <div class="stat-val" style="color:${netKar>=0?'var(--green)':'var(--red)'};font-size:${Math.abs(netKar)>=100000?'18px':'22px'}">${fmtTL(Math.abs(netKar))}</div>
+      <div class="stat-label">Net ${netKar>=0?'Kâr':'Zarar'} · %${totalGelir>0?Math.round(netKar/totalGelir*100):0} marj</div>
     </div>
     <div class="stat-card c-amber">
       <div class="stat-icon" style="background:var(--amber-bg);color:var(--amber)">⏳</div>
-      <div class="stat-val" style="color:var(--amber)">${fmtTL(toplamBekleyen)}</div>
-      <div class="stat-label">Bekleyen Tahsilat — ${bekleyenList.length} müşteri</div>
+      <div class="stat-val" style="color:var(--amber)">${fmtTL(totalBekleyen)}</div>
+      <div class="stat-label">Bekleyen · ${bekleyenList.length} müşteri</div>
+    </div>
+    <div class="stat-card c-red">
+      <div class="stat-icon" style="background:var(--red-bg);color:var(--red)">↩</div>
+      <div class="stat-val" style="color:var(--red)">${fmtTL(totalIade)}</div>
+      <div class="stat-label">Toplam İade (tüm zamanlar)</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon" style="background:var(--accent-l);color:var(--accent)">👤</div>
+      <div class="stat-val">${gelirList.length?fmtTL(Math.round(totalGelir/gelirList.length)):'—'}</div>
+      <div class="stat-label">Ortalama Müşteri Değeri</div>
     </div>
   </div>
 
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
-    <!-- KATEGORİ DAĞILIMI -->
-    <div class="tbl-wrap">
-      <div class="tbl-toolbar"><div class="tbl-label">📊 Gider Kategorileri</div></div>
-      <div style="padding:16px">
-        ${catList.length === 0 ? '<div style="color:var(--text3);font-size:12px;padding:8px 0">Bu dönemde gider yok</div>' :
-          catList.map(([cat, amt]) => `
-            <div style="margin-bottom:12px">
-              <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
-                <span style="color:var(--text);font-weight:500">${cat}</span>
-                <span style="color:var(--text2);font-weight:600">${fmtTL(amt)}</span>
-              </div>
-              <div style="height:6px;background:var(--border);border-radius:4px;overflow:hidden">
-                <div style="height:100%;width:${Math.round(amt/maxCat*100)}%;background:var(--red);border-radius:4px;transition:width .3s"></div>
-              </div>
-            </div>`).join('')
-        }
-      </div>
-    </div>
-
-    <!-- GELİR/GİDER ORANI -->
-    <div class="tbl-wrap">
-      <div class="tbl-toolbar"><div class="tbl-label">⚖️ Gelir / Gider Dengesi</div></div>
-      <div style="padding:20px">
-        ${toplamGelir === 0 && toplamGider === 0 ? '<div style="color:var(--text3);font-size:12px">Bu dönemde veri yok</div>' : (() => {
-          const total = toplamGelir + toplamGider || 1;
-          const gelirPct = Math.round(toplamGelir / total * 100);
-          const giderPct = 100 - gelirPct;
-          const margin = toplamGelir > 0 ? Math.round((netKar / toplamGelir) * 100) : 0;
-          return `
-            <div style="margin-bottom:16px">
-              <div style="display:flex;height:20px;border-radius:8px;overflow:hidden;gap:2px">
-                <div style="width:${gelirPct}%;background:var(--green);border-radius:8px 0 0 8px" title="Gelir"></div>
-                <div style="width:${giderPct}%;background:var(--red);border-radius:0 8px 8px 0" title="Gider"></div>
-              </div>
-              <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);margin-top:4px">
-                <span>🟢 Gelir %${gelirPct}</span>
-                <span>🔴 Gider %${giderPct}</span>
-              </div>
-            </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:12px">
-              <div style="background:var(--green-bg);border-radius:8px;padding:10px 14px">
-                <div style="color:var(--text3);margin-bottom:2px">Kâr Marjı</div>
-                <div style="font-size:18px;font-weight:700;color:${margin>=0?'var(--green)':'var(--red)'}">%${margin}</div>
-              </div>
-              <div style="background:var(--surface2);border-radius:8px;padding:10px 14px">
-                <div style="color:var(--text3);margin-bottom:2px">Müşteri Başı Ortalama</div>
-                <div style="font-size:16px;font-weight:700;color:var(--text)">${gelirList.length ? fmtTL(Math.round(toplamGelir / gelirList.length)) : '—'}</div>
-              </div>
-            </div>`;
-        })()}
-      </div>
-    </div>
-  </div>
-
-  <!-- GELİR TABLOSU -->
-  <div class="tbl-wrap" style="margin-bottom:20px" id="muh-gelir-sec">
+  <!-- AYLIK OZET -->
+  <div class="tbl-wrap" style="margin-bottom:16px">
     <div class="tbl-toolbar">
-      <div class="tbl-label">💵 Tahsilat Detayı</div>
-      <span style="font-size:11px;color:var(--text2)">${gelirList.length} müşteri · ${fmtTL(toplamGelir)}</span>
+      <div class="tbl-label">📅 Aylık Kırılım (Tüm Zamanlar)</div>
+      <button class="btn btn-ghost btn-sm" onclick="exportMuhAylik()">📥 Excel</button>
     </div>
     <table class="tbl">
-      <thead><tr><th>Müşteri</th><th>Ülke</th><th>Temsilci</th><th style="text-align:right">Ödenen</th><th style="text-align:right">Toplam</th><th>Durum</th><th>Ödeme Tarihi</th></tr></thead>
+      <thead><tr>
+        <th>Ay</th>
+        <th style="text-align:right">Tahsilat</th>
+        <th style="text-align:right">Gider</th>
+        <th style="text-align:right">Net</th>
+        <th style="text-align:right">Müşteri</th>
+        <th style="min-width:120px">Grafik</th>
+      </tr></thead>
       <tbody>
-        ${gelirList.length === 0
-          ? '<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--text3)">Bu dönemde tahsilat yok</td></tr>'
-          : gelirList.sort((a,b)=>(b.paymentDate||b.created||'').localeCompare(a.paymentDate||a.created||'')).map(c => {
-              const rem = (c.fee||0) - (c.prepay||0);
-              return `<tr onclick="openPanel('${c.id}')" style="cursor:pointer" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
-                <td style="font-weight:600">${c.name}</td>
-                <td style="color:var(--text2)">${c.country||'—'}</td>
-                <td style="color:var(--text2)">${c.rep||'—'}</td>
-                <td style="text-align:right;color:var(--green);font-weight:600">${fmtTL(c.prepay||0)}</td>
-                <td style="text-align:right;color:var(--text2)">${fmtTL(c.fee||0)}</td>
-                <td>${rem<=0?'<span style="color:var(--green);font-weight:600">✓ Tam</span>':'<span style="color:var(--amber);font-weight:600">'+fmtTL(rem)+' kalan</span>'}</td>
-                <td style="color:var(--text3);font-size:11px">${c.paymentDate?fmtDate(c.paymentDate):(c.lastModRaw?fmtDT(c.lastModRaw)+' *':'—')}</td>
-              </tr>`;
-            }).join('')
+        ${monthly.length===0?'<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text3)">Veri yok</td></tr>':
+          monthly.map(([key,v])=>{
+            const net=v.income-v.expense;
+            const barW=Math.round(v.income/maxMonIncome*100);
+            return `<tr onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
+              <td style="font-weight:600;white-space:nowrap">${fmtMonthKey(key)}</td>
+              <td style="text-align:right;color:var(--green);font-weight:600">${fmtTL(v.income)}</td>
+              <td style="text-align:right;color:var(--red)">${v.expense>0?fmtTL(v.expense):'—'}</td>
+              <td style="text-align:right;font-weight:700;color:${net>=0?'var(--green)':'var(--red)'}">${fmtTL(net)}</td>
+              <td style="text-align:right;color:var(--text2)">${v.count}</td>
+              <td>
+                <div style="display:flex;gap:2px;align-items:center">
+                  <div style="height:8px;width:${barW}%;min-width:3px;background:var(--green);border-radius:3px;max-width:100px"></div>
+                  ${v.refund>0?`<span style="font-size:9px;color:var(--red);margin-left:2px">-${fmtTLShort(v.refund)}</span>`:''}
+                </div>
+              </td>
+            </tr>`;
+          }).join('')
+        }
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 2 KOLON: TEMSILCI + ULKE -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+    <!-- TEMSILCI CIRO -->
+    <div class="tbl-wrap">
+      <div class="tbl-toolbar">
+        <div class="tbl-label">👤 Temsilci Cirosu</div>
+        <button class="btn btn-ghost btn-sm" onclick="exportMuhRep()">📥 Excel</button>
+      </div>
+      <table class="tbl">
+        <thead><tr><th>Temsilci</th><th style="text-align:right">Satış</th><th style="text-align:right">Ciro</th><th style="text-align:right">Ortalama</th><th style="text-align:right">Tam %</th></tr></thead>
+        <tbody>
+          ${repData.length===0?'<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text3)">Veri yok</td></tr>':
+            repData.map(([rep,v])=>`<tr onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
+              <td style="font-weight:600">${rep}</td>
+              <td style="text-align:right;color:var(--text2)">${v.count}</td>
+              <td style="text-align:right;color:var(--green);font-weight:700">${fmtTL(v.income)}</td>
+              <td style="text-align:right;color:var(--text2)">${fmtTL(Math.round(v.income/v.count))}</td>
+              <td style="text-align:right;color:${v.full/v.count>=0.7?'var(--green)':'var(--amber)'}">%${Math.round(v.full/v.count*100)}</td>
+            </tr>`).join('')
+          }
+        </tbody>
+      </table>
+    </div>
+    <!-- ULKE ANALIZI -->
+    <div class="tbl-wrap">
+      <div class="tbl-toolbar">
+        <div class="tbl-label">🌍 Ülke Bazlı Ciro</div>
+        <button class="btn btn-ghost btn-sm" onclick="exportMuhCountry()">📥 Excel</button>
+      </div>
+      <table class="tbl">
+        <thead><tr><th>Ülke</th><th style="text-align:right">Müşteri</th><th style="text-align:right">Ciro</th><th style="text-align:right">Ortalama</th></tr></thead>
+        <tbody>
+          ${countryData.length===0?'<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--text3)">Veri yok</td></tr>':
+            countryData.map(([c,v])=>`<tr onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
+              <td style="font-weight:600">${c}</td>
+              <td style="text-align:right;color:var(--text2)">${v.count}</td>
+              <td style="text-align:right;color:var(--green);font-weight:700">${fmtTL(v.income)}</td>
+              <td style="text-align:right;color:var(--text2)">${fmtTL(Math.round(v.income/v.count))}</td>
+            </tr>`).join('')
+          }
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- TAKSİT GECMİSİ -->
+  <div class="tbl-wrap" style="margin-bottom:16px">
+    <div class="tbl-toolbar">
+      <div class="tbl-label">💳 Taksit / Ödeme Geçmişi</div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:11px;color:var(--text2)">${payList.length} kayıt · ${fmtTL(payList.reduce((s,p)=>s+(p.amount||0),0))}</span>
+        <button class="btn btn-ghost btn-sm" onclick="exportMuhTaksit()">📥 Excel</button>
+      </div>
+    </div>
+    <table class="tbl">
+      <thead><tr><th>Tarih</th><th>Dosya No</th><th>Müşteri</th><th>Ülke</th><th style="text-align:right">Tutar</th><th>Not</th><th>Kaydeden</th></tr></thead>
+      <tbody>
+        ${payList.length===0?'<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--text3)">Bu dönemde taksit kaydı yok</td></tr>':
+          payList.sort((a,b)=>b.payment_date.localeCompare(a.payment_date)).map(p=>`
+          <tr onclick="openPanel('${p.customer_file_number}')" style="cursor:pointer" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
+            <td style="white-space:nowrap;color:var(--text2)">${fmtDate(p.payment_date)}</td>
+            <td style="color:var(--text3);font-size:11px">${p.customer_file_number}</td>
+            <td style="font-weight:600">${p.customers?esc(p.customers.full_name):'—'}</td>
+            <td style="color:var(--text2)">${p.customers?esc(p.customers.country||'—'):'—'}</td>
+            <td style="text-align:right;color:var(--green);font-weight:700">${fmtTL(p.amount)}</td>
+            <td style="color:var(--text2);font-size:11px">${p.note||'—'}</td>
+            <td style="color:var(--text3);font-size:11px">${p.recorded_by||'—'}</td>
+          </tr>`).join('')
+        }
+      </tbody>
+    </table>
+  </div>
+
+  <!-- TAHSİLAT DETAYI -->
+  <div class="tbl-wrap" style="margin-bottom:16px" id="muh-tahsilat">
+    <div class="tbl-toolbar">
+      <div class="tbl-label">💵 Müşteri Tahsilat Detayı</div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:11px;color:var(--text2)">${gelirList.length} müşteri · ${fmtTL(totalGelir)}</span>
+        <button class="btn btn-ghost btn-sm" onclick="exportMuhTahsilat()">📥 Excel</button>
+      </div>
+    </div>
+    <table class="tbl">
+      <thead><tr><th>Dosya No</th><th>Müşteri</th><th>Ülke</th><th>Temsilci</th><th style="text-align:right">Ödenen</th><th style="text-align:right">Toplam</th><th>Durum</th><th>Ödeme Tarihi</th></tr></thead>
+      <tbody>
+        ${gelirList.length===0?'<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text3)">Bu dönemde tahsilat yok</td></tr>':
+          gelirList.sort((a,b)=>(b.paymentDate||b.created||'').localeCompare(a.paymentDate||a.created||'')).map(c=>{
+            const rem=(c.fee||0)-(c.prepay||0);
+            return `<tr onclick="openPanel('${c.id}')" style="cursor:pointer" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
+              <td style="color:var(--text3);font-size:11px">${c.id}</td>
+              <td style="font-weight:600">${c.name}</td>
+              <td style="color:var(--text2)">${c.country||'—'}</td>
+              <td style="color:var(--text2)">${c.rep||'—'}</td>
+              <td style="text-align:right;color:var(--green);font-weight:700">${fmtTL(c.prepay||0)}</td>
+              <td style="text-align:right;color:var(--text2)">${fmtTL(c.fee||0)}</td>
+              <td>${rem<=0?'<span style="color:var(--green);font-weight:600">✓ Tam</span>':'<span style="color:var(--amber);font-weight:600">'+fmtTL(rem)+' kalan</span>'}</td>
+              <td style="color:var(--text3);font-size:11px">${c.paymentDate?fmtDate(c.paymentDate):(c.lastModRaw?fmtDT(c.lastModRaw)+' *':'—')}</td>
+            </tr>`;
+          }).join('')
         }
       </tbody>
     </table>
   </div>
 
   <!-- GİDER TABLOSU -->
-  <div class="tbl-wrap" id="muh-gider-sec">
+  <div class="tbl-wrap" id="muh-gider">
     <div class="tbl-toolbar">
       <div class="tbl-label">📤 Gider Kayıtları</div>
-      <span style="font-size:11px;color:var(--text2)">${giderList.length} kayıt · ${fmtTL(toplamGider)}</span>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:11px;color:var(--text2)">${giderList.length} kayıt · ${fmtTL(totalGider)}</span>
+        <button class="btn btn-primary btn-sm" onclick="openAddExpenseModal()">+ Gider Ekle</button>
+        <button class="btn btn-ghost btn-sm" onclick="exportMuhGider()">📥 Excel</button>
+      </div>
     </div>
     <table class="tbl">
       <thead><tr><th>Tarih</th><th>Kategori</th><th>Açıklama</th><th style="text-align:right">Tutar</th><th>Kaydeden</th><th></th></tr></thead>
       <tbody>
-        ${giderList.length === 0
-          ? '<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--text3)">Bu dönemde gider kaydı yok</td></tr>'
-          : giderList.map(e => `
-            <tr onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
-              <td style="color:var(--text2);white-space:nowrap">${fmtDate(e.date)}</td>
-              <td><span class="badge b-ops">${e.category}</span></td>
-              <td style="color:var(--text)">${e.description||'—'}</td>
-              <td style="text-align:right;color:var(--red);font-weight:700">${fmtTL(e.amount)}</td>
-              <td style="color:var(--text3);font-size:11px">${e.created_by||'—'}</td>
-              <td><button class="btn btn-danger btn-sm" onclick="deleteExpense('${e.id}')">Sil</button></td>
-            </tr>`).join('')
+        ${giderList.length===0?'<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text3)">Bu dönemde gider kaydı yok</td></tr>':
+          giderList.map(e=>`
+          <tr onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
+            <td style="color:var(--text2);white-space:nowrap">${fmtDate(e.date)}</td>
+            <td><span class="badge b-ops">${e.category}</span></td>
+            <td style="color:var(--text)">${e.description||'—'}</td>
+            <td style="text-align:right;color:var(--red);font-weight:700">${fmtTL(e.amount)}</td>
+            <td style="color:var(--text3);font-size:11px">${e.created_by||'—'}</td>
+            <td><button class="btn btn-danger btn-sm" onclick="deleteExpense('${e.id}')">Sil</button></td>
+          </tr>`).join('')
         }
       </tbody>
     </table>
   </div>`;
+}
+
+// ─── EXCEL EXPORT FONKSİYONLARI ───
+
+function exportMuhAylik() {
+  const monthly = getMonthlyBreakdown();
+  if (!monthly.length) { toast('Veri yok','red'); return; }
+  const headers = ['Ay','Tahsilat (₺)','Gider (₺)','Net Kâr (₺)','İade (₺)','Müşteri Sayısı'];
+  const rows = monthly.map(([key,v]) => [fmtMonthKey(key), v.income, v.expense, v.income-v.expense, v.refund, v.count]);
+  const totRow = ['TOPLAM',
+    monthly.reduce((s,[,v])=>s+v.income,0),
+    monthly.reduce((s,[,v])=>s+v.expense,0),
+    monthly.reduce((s,[,v])=>s+(v.income-v.expense),0),
+    monthly.reduce((s,[,v])=>s+v.refund,0),
+    monthly.reduce((s,[,v])=>s+v.count,0)
+  ];
+  const ws = XLSX.utils.aoa_to_sheet([headers,...rows,totRow]);
+  ws['!cols'] = [{wch:14},{wch:16},{wch:14},{wch:14},{wch:12},{wch:14}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'Aylik Kiriim');
+  XLSX.writeFile(wb,`muhasebe-aylik-${new Date().toISOString().slice(0,10)}.xlsx`);
+  toast('✓ Aylık rapor indirildi','green');
+}
+
+function exportMuhRep() {
+  const { gelirList } = getMuhData(muhPeriod);
+  const repData = getRepBreakdown(gelirList);
+  if (!repData.length) { toast('Veri yok','red'); return; }
+  const headers = ['Temsilci','Satış Sayısı','Toplam Ciro (₺)','Ortalama (₺)','Tam Ödeme Sayısı','Tam Ödeme %'];
+  const rows = repData.map(([rep,v]) => [rep,v.count,v.income,Math.round(v.income/v.count),v.full,Math.round(v.full/v.count*100)+'%']);
+  const ws = XLSX.utils.aoa_to_sheet([headers,...rows]);
+  ws['!cols'] = [{wch:18},{wch:14},{wch:16},{wch:14},{wch:16},{wch:14}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'Temsilci Cirosu');
+  XLSX.writeFile(wb,`muhasebe-temsilci-${new Date().toISOString().slice(0,10)}.xlsx`);
+  toast('✓ Temsilci raporu indirildi','green');
+}
+
+function exportMuhCountry() {
+  const { gelirList } = getMuhData(muhPeriod);
+  const countryData = getCountryBreakdown(gelirList);
+  if (!countryData.length) { toast('Veri yok','red'); return; }
+  const headers = ['Ülke','Müşteri Sayısı','Toplam Ciro (₺)','Ortalama (₺)'];
+  const rows = countryData.map(([c,v]) => [c,v.count,v.income,Math.round(v.income/v.count)]);
+  const ws = XLSX.utils.aoa_to_sheet([headers,...rows]);
+  ws['!cols'] = [{wch:16},{wch:14},{wch:16},{wch:14}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'Ulke Analizi');
+  XLSX.writeFile(wb,`muhasebe-ulke-${new Date().toISOString().slice(0,10)}.xlsx`);
+  toast('✓ Ülke raporu indirildi','green');
+}
+
+function exportMuhTaksit() {
+  const { payList } = getMuhData(muhPeriod);
+  if (!payList.length) { toast('Bu dönemde taksit yok','red'); return; }
+  const headers = ['Tarih','Dosya No','Müşteri','Ülke','Tutar (₺)','Not','Kaydeden'];
+  const rows = payList.sort((a,b)=>b.payment_date.localeCompare(a.payment_date)).map(p=>[
+    p.payment_date, p.customer_file_number,
+    p.customers?.full_name||'—', p.customers?.country||'—',
+    p.amount, p.note||'', p.recorded_by||'—'
+  ]);
+  const ws = XLSX.utils.aoa_to_sheet([headers,...rows]);
+  ws['!cols'] = [{wch:12},{wch:16},{wch:22},{wch:14},{wch:12},{wch:24},{wch:16}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'Taksit Gecmisi');
+  XLSX.writeFile(wb,`muhasebe-taksit-${new Date().toISOString().slice(0,10)}.xlsx`);
+  toast('✓ Taksit listesi indirildi','green');
+}
+
+function exportMuhTahsilat() {
+  const { gelirList } = getMuhData(muhPeriod);
+  if (!gelirList.length) { toast('Bu dönemde tahsilat yok','red'); return; }
+  const headers = ['Dosya No','Ad Soyad','Ülke','Temsilci','Ödenen (₺)','Toplam Ücret (₺)','Kalan (₺)','Tam Ödeme','Ödeme Tarihi'];
+  const rows = gelirList.sort((a,b)=>(b.paymentDate||b.created||'').localeCompare(a.paymentDate||a.created||'')).map(c=>{
+    const rem=(c.fee||0)-(c.prepay||0);
+    return [c.id,c.name,c.country||'',c.rep||'',c.prepay||0,c.fee||0,rem>0?rem:0,rem<=0?'Evet':'Hayir',c.paymentDate||''];
+  });
+  const ws = XLSX.utils.aoa_to_sheet([headers,...rows]);
+  ws['!cols'] = [{wch:16},{wch:22},{wch:14},{wch:16},{wch:12},{wch:14},{wch:10},{wch:10},{wch:14}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'Tahsilat Detayi');
+  XLSX.writeFile(wb,`muhasebe-tahsilat-${new Date().toISOString().slice(0,10)}.xlsx`);
+  toast('✓ Tahsilat detayı indirildi','green');
+}
+
+function exportMuhGider() {
+  const { giderList } = getMuhData(muhPeriod);
+  if (!giderList.length) { toast('Bu dönemde gider yok','red'); return; }
+  const headers = ['Tarih','Kategori','Açıklama','Tutar (₺)','Kaydeden'];
+  const rows = giderList.map(e=>[e.date,e.category,e.description||'',e.amount,e.created_by||'']);
+  const totRow = ['','','TOPLAM',giderList.reduce((s,e)=>s+(e.amount||0),0),''];
+  const ws = XLSX.utils.aoa_to_sheet([headers,...rows,totRow]);
+  ws['!cols'] = [{wch:12},{wch:12},{wch:28},{wch:12},{wch:16}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'Gider Kayitlari');
+  XLSX.writeFile(wb,`muhasebe-gider-${new Date().toISOString().slice(0,10)}.xlsx`);
+  toast('✓ Gider listesi indirildi','green');
+}
+
+function exportMuhTamRapor() {
+  const { gelirList, giderList, payList, totalGelir, totalGider, totalBekleyen, totalIade } = getMuhData(muhPeriod);
+  const netKar = totalGelir - totalGider;
+  const monthly = getMonthlyBreakdown();
+  const repData = getRepBreakdown(gelirList);
+  const countryData = getCountryBreakdown(gelirList);
+  const wb = XLSX.utils.book_new();
+  const period = MUH_PERIODS.find(([v])=>v===muhPeriod)?.[1]||muhPeriod;
+
+  // Sheet 1: Ozet
+  const ozet = [
+    ['VizeCRM Muhasebe Raporu - '+period],[''],
+    ['Toplam Tahsilat (₺)', totalGelir],
+    ['Toplam Gider (₺)', totalGider],
+    ['Net Kar/Zarar (₺)', netKar],
+    ['Bekleyen Tahsilat (₺)', totalBekleyen],
+    ['Toplam Iade (₺)', totalIade],
+    ['Odeme Alan Musteri', gelirList.length],
+    ['Ort. Musteri Degeri (₺)', gelirList.length?Math.round(totalGelir/gelirList.length):0],
+    ['Rapor Tarihi', new Date().toLocaleDateString('tr-TR')],
+  ];
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(ozet), 'Ozet');
+
+  // Sheet 2: Aylik
+  const aylikH = ['Ay','Tahsilat','Gider','Net','Iade','Musteri'];
+  const aylikR = monthly.map(([k,v])=>[fmtMonthKey(k),v.income,v.expense,v.income-v.expense,v.refund,v.count]);
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([aylikH,...aylikR]), 'Aylik');
+
+  // Sheet 3: Temsilci
+  const repH = ['Temsilci','Satis','Ciro','Ortalama','Tam Odeme'];
+  const repR = repData.map(([r,v])=>[r,v.count,v.income,Math.round(v.income/v.count),Math.round(v.full/v.count*100)+'%']);
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([repH,...repR]), 'Temsilci');
+
+  // Sheet 4: Ulke
+  const cntH = ['Ulke','Musteri','Ciro','Ortalama'];
+  const cntR = countryData.map(([c,v])=>[c,v.count,v.income,Math.round(v.income/v.count)]);
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([cntH,...cntR]), 'Ulke');
+
+  // Sheet 5: Taksitler
+  const takH = ['Tarih','Dosya No','Musteri','Ulke','Tutar','Not','Kaydeden'];
+  const takR = payList.sort((a,b)=>b.payment_date.localeCompare(a.payment_date)).map(p=>[p.payment_date,p.customer_file_number,p.customers?.full_name||'',p.customers?.country||'',p.amount,p.note||'',p.recorded_by||'']);
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([takH,...takR]), 'Taksitler');
+
+  // Sheet 6: Tahsilat
+  const tahH = ['Dosya No','Ad Soyad','Ulke','Temsilci','Odenen','Toplam','Kalan','Odeme Tarihi'];
+  const tahR = gelirList.sort((a,b)=>(b.paymentDate||b.created||'').localeCompare(a.paymentDate||a.created||'')).map(c=>{const rem=(c.fee||0)-(c.prepay||0);return[c.id,c.name,c.country||'',c.rep||'',c.prepay||0,c.fee||0,rem>0?rem:0,c.paymentDate||''];});
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([tahH,...tahR]), 'Tahsilat');
+
+  // Sheet 7: Gider
+  const gdrH = ['Tarih','Kategori','Aciklama','Tutar','Kaydeden'];
+  const gdrR = giderList.map(e=>[e.date,e.category,e.description||'',e.amount,e.created_by||'']);
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([gdrH,...gdrR]), 'Gider');
+
+  XLSX.writeFile(wb,`VizeCRM-Muhasebe-${period.replace(/ /g,'_')}-${new Date().toISOString().slice(0,10)}.xlsx`);
+  toast('✓ Tam rapor indirildi (7 sekme)','green');
 }
 
 function openAddExpenseModal() {
@@ -1928,7 +2223,7 @@ function openAddExpenseModal() {
         <div>
           <label style="font-size:12px;color:var(--text2);font-weight:500;display:block;margin-bottom:4px">Kategori</label>
           <select id="exp-cat" class="sel" style="width:100%;padding:8px 10px">
-            ${['Kira','Maaş','Ofis','Reklam','Ulaşım','Diğer'].map(c => `<option>${c}</option>`).join('')}
+            ${['Kira','Maas','Ofis','Reklam','Ulasim','Diger'].map(c=>`<option>${c}</option>`).join('')}
           </select>
         </div>
         <div>
@@ -1937,7 +2232,7 @@ function openAddExpenseModal() {
         </div>
         <div>
           <label style="font-size:12px;color:var(--text2);font-weight:500;display:block;margin-bottom:4px">Açıklama</label>
-          <input type="text" id="exp-desc" class="fi2" placeholder="İsteğe bağlı..." style="width:100%;padding:8px 10px">
+          <input type="text" id="exp-desc" class="fi2" placeholder="İsteğe bagli..." style="width:100%;padding:8px 10px">
         </div>
       </div>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:20px">
@@ -1956,24 +2251,24 @@ async function saveExpense(btn) {
   if (!expDate || !expAmount || expAmount <= 0) { toast('Tarih ve tutar zorunludur', 'red'); return; }
   btn.disabled = true; btn.textContent = 'Kaydediliyor...';
   try {
-    const res = await fetch(EDGE_FUNCTION_URL, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'addExpense',expDate,expCategory,expAmount,expDescription,token:CU.token})});
+    const res = await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'addExpense',expDate,expCategory,expAmount,expDescription,token:CU.token})});
     const d = await res.json();
-    if (!d.success) { toast('Hata: '+(d.error?.message||'Kaydedilemedi'), 'red'); btn.disabled=false; btn.textContent='Kaydet'; return; }
+    if (!d.success) { toast('Hata: '+(d.error?.message||'Kaydedilemedi'),'red'); btn.disabled=false; btn.textContent='Kaydet'; return; }
     btn.closest('div[style*="fixed"]').remove();
-    toast('✓ Gider kaydedildi', 'green');
+    toast('Gider kaydedildi','green');
     await renderMuhasebe();
-  } catch(e) { toast('Bağlantı hatası', 'red'); btn.disabled=false; btn.textContent='Kaydet'; }
+  } catch(e) { toast('Baglanti hatasi','red'); btn.disabled=false; btn.textContent='Kaydet'; }
 }
 
 async function deleteExpense(id) {
   if (!confirm('Bu gider kaydı silinecek. Emin misiniz?')) return;
   try {
-    const res = await fetch(EDGE_FUNCTION_URL, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'deleteExpense',expenseId:id,token:CU.token})});
+    const res = await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'deleteExpense',expenseId:id,token:CU.token})});
     const d = await res.json();
-    if (!d.success) { toast('Silinemedi', 'red'); return; }
-    toast('🗑 Gider silindi', 'red');
+    if (!d.success) { toast('Silinemedi','red'); return; }
+    toast('Gider silindi','red');
     await renderMuhasebe();
-  } catch(e) { toast('Bağlantı hatası', 'red'); }
+  } catch(e) { toast('Baglanti hatasi','red'); }
 }
 
 function renderRefunds(){
@@ -2254,6 +2549,7 @@ async function openPanel(id, readonly=false){
   try{
     const res=await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'getCustomerDetail',customerId:id,token:CU.token})});
     const d=await res.json();
+    panelPayments=(d.payments||[]);
     notes=(d.notes||[]).map(n=>({text:esc(n.text),author:esc(n.author||'—'),date:fmtDT(n.created_at)}));
     calls=(d.calls||[]).map(cl=>({caller:esc(cl.caller||'—'),date:fmtDT(cl.created_at),result:cl.result,note:esc(cl.note)}));
     documents=(d.documents||[]);
@@ -2478,6 +2774,26 @@ async function openPanel(id, readonly=false){
         <span style="font-size:12px;font-weight:700;color:${pct>=100?'var(--green)':'var(--amber)'}">%${pct}</span>
       </div>
     </div>
+    ${CU.role==='management'?`
+    <div style="border-top:1px solid var(--border);margin-top:2px;padding-top:10px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div style="font-size:12px;font-weight:600;color:var(--text2)">📋 Taksit Geçmişi</div>
+        <button class="btn btn-primary btn-sm" onclick="openAddPaymentModal('${c.id}')">+ Taksit Ekle</button>
+      </div>
+      <div id="payment-history-${c.id}">
+      ${panelPayments.length===0?
+        '<div style="font-size:11px;color:var(--text3);padding:6px 0">Henüz taksit kaydı yok</div>' :
+        panelPayments.map(p=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:var(--surface2);border-radius:6px;margin-bottom:4px;font-size:12px">
+          <div style="display:flex;flex-direction:column;gap:1px">
+            <span style="font-weight:600;color:var(--green)">+${fmtTL(p.amount)}</span>
+            <span style="color:var(--text3);font-size:10px">${fmtDate(p.payment_date)} · ${p.recorded_by}</span>
+            ${p.note?'<span style="color:var(--text2);font-size:10px">'+esc(p.note)+'</span>':''}
+          </div>
+          <button class="btn btn-danger btn-sm" style="font-size:10px;padding:2px 6px" onclick="deletePanelPayment('${c.id}','`+p.id+`')">Sil</button>
+        </div>`).join('')
+      }
+      </div>
+    </div>`:''}
   </div>
 
 
@@ -2840,6 +3156,63 @@ async function updateCustomerInfo(id){
   }catch(e){
     toast('Bağlantı hatası','red');
   }
+}
+
+function openAddPaymentModal(custId) {
+  const today = new Date().toISOString().slice(0, 10);
+  const modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px';
+  modal.onclick = e => { if (e.target === modal) modal.remove(); };
+  modal.innerHTML = `
+    <div style="background:var(--surface);border-radius:16px;width:100%;max-width:380px;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
+      <div style="font-size:15px;font-weight:700;margin-bottom:16px">💵 Taksit Ekle</div>
+      <div style="display:grid;gap:10px">
+        <div>
+          <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Tarih *</label>
+          <input type="date" id="pay-date-inp" class="fi2" value="${today}" style="width:100%;padding:7px 10px">
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Tutar (₺) *</label>
+          <input type="number" id="pay-amt-inp" class="fi2" placeholder="0" min="1" style="width:100%;padding:7px 10px">
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Not</label>
+          <input type="text" id="pay-note-inp" class="fi2" placeholder="İsteğe bağlı..." style="width:100%;padding:7px 10px">
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+        <button class="btn btn-ghost btn-sm" onclick="this.closest('div[style*=fixed]').remove()">İptal</button>
+        <button class="btn btn-primary btn-sm" id="pay-save-btn" onclick="savePanelPayment('${custId}',this)">Kaydet</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+}
+
+async function savePanelPayment(custId, btn) {
+  const payDate = document.getElementById('pay-date-inp').value;
+  const payAmt = parseFloat(document.getElementById('pay-amt-inp').value);
+  const payNote = document.getElementById('pay-note-inp').value.trim();
+  if (!payDate || !payAmt || payAmt <= 0) { toast('Tarih ve tutar zorunludur', 'red'); return; }
+  btn.disabled = true; btn.textContent = '...';
+  try {
+    const res = await fetch(EDGE_FUNCTION_URL, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'addPayment',customerId:custId,payAmt,payDate,payNote,token:CU.token})});
+    const d = await res.json();
+    if (!d.success) { toast('Hata: '+(d.error?.message||'Eklenemedi'),'red'); btn.disabled=false; btn.textContent='Kaydet'; return; }
+    btn.closest('div[style*="fixed"]').remove();
+    toast('✓ Taksit eklendi — Yeni toplam: '+fmtTL(d.newTotal), 'green');
+    await openPanel(custId, panelReadOnly);
+  } catch(e) { toast('Bağlantı hatası','red'); btn.disabled=false; btn.textContent='Kaydet'; }
+}
+
+async function deletePanelPayment(custId, payId) {
+  if (!confirm('Bu taksit kaydı silinecek?')) return;
+  try {
+    const res = await fetch(EDGE_FUNCTION_URL, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'deletePayment',payId,token:CU.token})});
+    const d = await res.json();
+    if (!d.success) { toast('Silinemedi','red'); return; }
+    toast('🗑 Taksit silindi','red');
+    await openPanel(custId, panelReadOnly);
+  } catch(e) { toast('Bağlantı hatası','red'); }
 }
 
 async function updatePayment(id){
