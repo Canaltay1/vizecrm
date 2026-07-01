@@ -976,7 +976,7 @@ function showPendingDetail() {
     : list.map(function(c) {
         var rem = (c.fee||0)-(c.prepay||0);
         var pays = allPayments.filter(p => p.customer_file_number===c.id).sort((a,b) => a.payment_date<b.payment_date?-1:1);
-        var ilk = pays.length>0 ? pays[0].payment_date : (c.paymentDate||"");
+        var ilk = pays.length>0 ? pays[0].payment_date : (c.paymentDate||(c.prepay>0?c.created:''));
         return "<tr data-cid='" + c.id + "' class=pen-row style=cursor:pointer>"
           + "<td style=\"padding:10px 14px;font-weight:600\">" + esc(c.name) + "</td>"
           + "<td style=\"padding:10px 14px;color:var(--text2)\">" + (c.country||"—") + "</td>"
@@ -985,8 +985,8 @@ function showPendingDetail() {
           + "<td style=\"padding:10px 14px;text-align:right;color:var(--text2)\">" + fmtTL(c.fee||0) + "</td>"
           + "<td style=\"padding:10px 14px;text-align:right;color:var(--green);font-weight:600\">" + fmtTL(c.prepay||0) + "</td>"
           + "<td style=\"padding:10px 14px;text-align:right;color:var(--amber);font-weight:700\">" + fmtTL(rem) + "</td>"
-          + "<td style=\"padding:10px 14px;color:var(--text3);font-size:11px\">" + (ilk?fmtDate(ilk):"Henüz ödeme yok") + "</td>"
-          + "<td style=\"padding:10px 14px;font-size:11px;color:var(--text3)\">" + (c.lastMod||"—") + (c.lastModBy?"<br><b style=color:var(--text2)>"+c.lastModBy+"</b>":"") + "</td>"
+          + "<td style=\"padding:10px 14px;color:var(--text3);font-size:11px\">" + (ilk?fmtDate(ilk):"—") + "</td>"
+          + "<td style=\"padding:10px 14px;font-size:11px\">" + (c.lastModBy?"<b style=color:var(--text)>"+c.lastModBy+"</b><br>":"") + "<span style=color:var(--text3)>" + (c.lastMod||"—") + "</span></td>"
           + "</tr>";
       }).join("");
   var m = document.createElement("div");
