@@ -1923,24 +1923,15 @@ function getMuhData(period) {
 
 function getMonthlyBreakdown() {
   const monthMap = {};
-  // Gelir: allPayments doluysa oradan, yoksa customers.prepay fallback
-  if (allPayments.length > 0) {
-    allPayments.forEach(p => {
-      const k = (p.payment_date||'').slice(0,7);
-      if (!k) return;
-      if (!monthMap[k]) monthMap[k] = {income:0,expense:0,count:0,refund:0};
-      monthMap[k].income += Number(p.amount||0);
-      monthMap[k].count++;
-    });
-  } else {
-    customers.filter(c=>(c.prepay||0)>0).forEach(c=>{
-      const k = getMuhMonthKey(c.paymentDate||c.created);
-      if (!k) return;
-      if (!monthMap[k]) monthMap[k] = {income:0,expense:0,count:0,refund:0};
-      monthMap[k].income += c.prepay||0;
-      monthMap[k].count++;
-    });
-  }
+  // Aylık kırılım: her zaman customers.prepay kullan (tüm geçmiş dahil)
+  // allPayments sadece belirli dönem filtrelerinde kullanılır, burada değil
+  customers.filter(c=>(c.prepay||0)>0).forEach(c=>{
+    const k = getMuhMonthKey(c.paymentDate||c.created);
+    if (!k) return;
+    if (!monthMap[k]) monthMap[k] = {income:0,expense:0,count:0,refund:0};
+    monthMap[k].income += c.prepay||0;
+    monthMap[k].count++;
+  });
   // Gider (her zaman expenses tablosundan)
   expenses.forEach(e=>{
     const k = getMuhMonthKey(e.date);
