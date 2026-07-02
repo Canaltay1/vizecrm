@@ -2414,8 +2414,8 @@ function exportMuhGider() {
 }
 
 function exportMuhTamRapor() {
-  const { items: tamItems, giderList, payList, totalGelir, totalGider, totalBekleyen, totalIade } = getMuhData(muhPeriod);
-  const netKar = totalGelir - totalGider;
+  const { items: tamItems, giderList, custExpList, totalGelir, totalGider, totalCustExp, totalBekleyen, totalIade, uniqueCustCount } = getMuhData(muhPeriod);
+  const netKar = totalGelir - totalGider - totalCustExp;
   const monthly = getMonthlyBreakdown();
   const repData = getRepBreakdown(tamItems);
   const countryData = getCountryBreakdown(tamItems);
@@ -2426,12 +2426,13 @@ function exportMuhTamRapor() {
   const ozet = [
     ['VizeCRM Muhasebe Raporu - '+period],[''],
     ['Toplam Tahsilat (₺)', totalGelir],
-    ['Toplam Gider (₺)', totalGider],
+    ['Genel Giderler (₺)', totalGider],
+    ['Müşteri Giderleri (₺)', totalCustExp],
     ['Net Kar/Zarar (₺)', netKar],
     ['Bekleyen Tahsilat (₺)', totalBekleyen],
     ['Toplam Iade (₺)', totalIade],
-    ['Odeme Islemi Sayisi', payList.length],
-    ['Ort. Musteri Degeri (₺)', payList.length?Math.round(totalGelir/payList.length):0],
+    ['Odeme Alan Musteri', uniqueCustCount],
+    ['Ort. Musteri Degeri (₺)', uniqueCustCount?Math.round(totalGelir/uniqueCustCount):0],
     ['Rapor Tarihi', new Date().toLocaleDateString('tr-TR')],
   ];
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(ozet), 'Ozet');
@@ -2456,13 +2457,21 @@ function exportMuhTamRapor() {
   const tahR = tamItems.sort((a,b)=>(b.date||'').localeCompare(a.date||'')).map(p=>[p.date,p.fileNo,p.name,p.country,p.rep,p.amount,p.note||'']);
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([tahH,...tahR]), 'Odemeler');
 
-  // Sheet 7: Gider
+  // Sheet 7: Genel Gider
   const gdrH = ['Tarih','Kategori','Aciklama','Tutar','Kaydeden'];
   const gdrR = giderList.map(e=>[e.date,e.category,e.description||'',e.amount,e.created_by||'']);
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([gdrH,...gdrR]), 'Gider');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([gdrH,...gdrR]), 'Genel-Gider');
+
+  // Sheet 8: Müşteri Giderleri
+  const cgH = ['Dosya No','Müşteri','Tutar','Açıklama','Kaydeden','Tarih'];
+  const cgR = custExpList.map(function(e){
+    const c=customers.find(function(x){return x.id===e.customer_file_number;});
+    return [e.customer_file_number,c?c.name:'—',Number(e.amount),e.description||'',e.created_by||'',e.created_at?e.created_at.slice(0,10):''];
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([cgH,...cgR]), 'Musteri-Giderleri');
 
   XLSX.writeFile(wb,`VizeCRM-Muhasebe-${period.replace(/ /g,'_')}-${new Date().toISOString().slice(0,10)}.xlsx`);
-  toast('✓ Tam rapor indirildi (7 sekme)','green');
+  toast('✓ Tam rapor indirildi (8 sekme)','green');
 }
 
 
