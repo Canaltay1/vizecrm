@@ -966,7 +966,7 @@ async function renderDash(){
 
 // ---- DASHBOARD FİLTRELERİ (dönem / temsilci / ülke) ----
 let dashPeriod='all', dashRep='', dashCountry='', dashDateFrom='', dashDateTo='';
-const DASH_PERIODS=[['all','Tüm Zamanlar'],['today','Bugün'],['week','Bu Hafta'],['month','Bu Ay'],['quarter','Bu Çeyrek'],['year','Bu Yıl']];
+const DASH_PERIODS=[['all','Tüm Zamanlar'],['today','Bugün'],['week','Bu Hafta'],['month','Bu Ay'],['quarter','Bu Çeyrek'],['year','Bu Yıl'],...[["2026-01","Ocak 2026"],["2026-02","Şubat 2026"],["2026-03","Mart 2026"],["2026-04","Nisan 2026"],["2026-05","Mayıs 2026"],["2026-06","Haziran 2026"],["2026-07","Temmuz 2026"],["2026-08","Ağustos 2026"],["2026-09","Eylül 2026"],["2026-10","Ekim 2026"],["2026-11","Kasım 2026"],["2026-12","Aralık 2026"]]];
 
 function inDashPeriod(c,period){
   // Kayıt tarihi (registration_date) varsa onu kullan, yoksa created_at'e düş
@@ -991,6 +991,7 @@ function inDashPeriod(c,period){
   if(period==='month')return d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth();
   if(period==='quarter')return d.getFullYear()===now.getFullYear()&&Math.floor(d.getMonth()/3)===Math.floor(now.getMonth()/3);
   if(period==='year')return d.getFullYear()===now.getFullYear();
+  if(/^\d{4}-\d{2}$/.test(period)){const[y,m]=period.split('-').map(Number);return d.getFullYear()===y&&d.getMonth()===m-1;}
   return true;
 }
 function getDashFiltered(){
@@ -1111,7 +1112,7 @@ function showPaymentDetail(){
                 <td style="padding:10px 16px;color:var(--text2)">${p.rep}</td>
                 <td style="padding:10px 16px;text-align:right;color:var(--green);font-weight:600">₺${p.amount.toLocaleString('tr-TR')}</td>
                 <td style="padding:10px 16px;text-align:right;color:var(--text2)">₺${(p.fee||0).toLocaleString('tr-TR')}</td>
-                <td style="padding:10px 16px">${rem<=0?'<span style="color:var(--green);font-weight:600">✓ Tam</span>':'<span style="color:var(--amber);font-weight:600">₺'+rem.toLocaleString('tr-TR')+' kalan</span>'}</td>
+                <td style="padding:10px 16px">${(c.fee>0&&rem<=0)?'<span style="color:var(--green);font-weight:600">✓ Tam</span>':(c.fee<=0?'<span style="color:var(--text3)">— Ödeme Yok</span>':'<span style="color:var(--amber);font-weight:600">₺'+rem.toLocaleString('tr-TR')+' kalan</span>')}</td>
                 <td style="padding:10px 16px;color:var(--text3);font-size:11px;white-space:nowrap">${p.date?fmtDate(p.date):'—'}</td>
                 <td style="padding:10px 16px;font-size:11px;color:var(--text3)">
                   ${p.lastMod?`<div style="white-space:nowrap">${p.lastMod}</div>`:''}
@@ -1169,7 +1170,7 @@ function showAllCustomersDetail(){
         <td style="padding:9px 14px;color:var(--text2)">${c.country||'—'}</td>
         <td style="padding:9px 14px"><span class="badge ${SCLS[c.status]||'b-lead'}" style="font-size:10px">${c.status}</span></td>
         <td style="padding:9px 14px;color:var(--text2)">${c.rep||'—'}</td>
-        <td style="padding:9px 14px;text-align:right;color:${rem<=0?'var(--green)':'var(--amber)'};font-weight:600">${rem<=0?'✓ Tam':'₺'+rem.toLocaleString('tr-TR')}</td>
+        <td style="padding:9px 14px;text-align:right;color:${rem<=0?'var(--green)':'var(--amber)'};font-weight:600">${(c.fee>0&&rem<=0)?'✓ Tam':(c.fee<=0?'—':'₺'+rem.toLocaleString('tr-TR'))}</td>
         <td style="padding:9px 14px;font-size:11px;color:var(--text3)">${c.created?fmtDT(c.created):'—'}</td>
         <td style="padding:9px 14px;font-size:11px;color:var(--text3)">
           ${c.lastModBy
@@ -1326,15 +1327,15 @@ function renderDashFilterBar(){
   const active=dashPeriod!=='all'||dashRep||dashCountry||dashDateFrom||dashDateTo;
   document.getElementById('dash-filterbar').innerHTML=`
   <div class="filter-bar" style="flex-wrap:wrap;gap:8px">
-    <select class="sel" onchange="dashPeriod=this.value;if(this.value!=='custom'){dashDateFrom='';dashDateTo='';}renderDashFilterBar();renderDashBody()">
+    <select class="sel" onchange="dashPeriod=this.value;if(this.value!=='custom'){dashDateFrom='';dashDateTo='';muhDateFrom='';muhDateTo='';}renderDashFilterBar();renderDashBody()">
       ${DASH_PERIODS.map(([v,l])=>`<option value="${v}" ${dashPeriod===v?'selected':''}>${l}</option>`).join('')}
       <option value="custom" ${dashPeriod==='custom'?'selected':''}>📅 Tarih Aralığı</option>
     </select>
     ${dashPeriod==='custom'?`
     <div style="display:flex;align-items:center;gap:6px">
-      <input type="date" class="fi2" value="${dashDateFrom}" style="padding:5px 8px;font-size:12px;width:140px" onchange="dashDateFrom=this.value;renderDashBody()">
+      <input type="date" class="fi2" value="${dashDateFrom}" style="padding:5px 8px;font-size:12px;width:140px" onchange="dashDateFrom=this.value;muhDateFrom=this.value;renderDashBody()">
       <span style="font-size:12px;color:var(--text3)">—</span>
-      <input type="date" class="fi2" value="${dashDateTo}" style="padding:5px 8px;font-size:12px;width:140px" onchange="dashDateTo=this.value;renderDashBody()">
+      <input type="date" class="fi2" value="${dashDateTo}" style="padding:5px 8px;font-size:12px;width:140px" onchange="dashDateTo=this.value;muhDateTo=this.value;renderDashBody()">
     </div>`:''}
     <select class="sel" onchange="dashRep=this.value;renderDashBody()">
       <option value="">Tüm Temsilciler</option>
@@ -1991,10 +1992,8 @@ function inMuhPeriod(dateStr, period) {
   if (period === 'month') return d.getFullYear()===now.getFullYear() && d.getMonth()===now.getMonth();
   if (period === 'quarter') return d.getFullYear()===now.getFullYear() && Math.floor(d.getMonth()/3)===Math.floor(now.getMonth()/3);
   if (period === 'year') return d.getFullYear()===now.getFullYear();
+  if (/^\d{4}-\d{2}$/.test(period)) { const [y,m]=period.split('-').map(Number); return d.getFullYear()===y && d.getMonth()===m-1; }
   return true;
-}
-
-function getMuhMonthKey(dateStr) {
   if (!dateStr) return null;
   return dateStr.slice(0,7); // YYYY-MM
 }
@@ -3124,7 +3123,7 @@ async function openPanel(id, readonly=false){
             <input class="fi2" type="number" id="ap-fee-${ap.id}" value="${ap.fee||''}" placeholder="Ücret (₺)" style="padding:5px;font-size:11px">
             <select class="fi2" id="ap-apc-${ap.id}" style="padding:5px;font-size:11px">
               <option value="">Merkez seç...</option>
-              ${['İstanbul','Ankara','İzmir','Antalya','Gaziantep'].map(m=>`<option value="${m}" ${ap.appt_center===m?'selected':''}>${m}</option>`).join('')}
+              ${['İstanbul','Ankara','İzmir','Antalya','Gaziantep','Bursa','Edirne','Marmaris','Tekirdağ-Çorlu','Diyarbakır'].map(m=>`<option value="${m}" ${ap.appt_center===m?'selected':''}>${m}</option>`).join('')}
             </select>
             <input class="fi2" type="date" id="ap-apd-${ap.id}" value="${ap.appt_date||''}" style="padding:5px;font-size:11px">
             <input class="fi2" type="time" id="ap-apt-${ap.id}" value="${ap.appt_time||''}" style="padding:5px;font-size:11px">
@@ -3144,7 +3143,7 @@ async function openPanel(id, readonly=false){
           <input class="fi2" type="time" id="new-ap-time-${c.id}" style="padding:5px;font-size:11px">
           <select class="fi2" id="new-ap-center-${c.id}" style="padding:5px;font-size:11px">
             <option value="">Merkez...</option>
-            ${['İstanbul','Ankara','İzmir','Antalya','Gaziantep'].map(m=>`<option>${m}</option>`).join('')}
+            ${['İstanbul','Ankara','İzmir','Antalya','Gaziantep','Bursa','Edirne','Marmaris','Tekirdağ-Çorlu','Diyarbakır'].map(m=>`<option>${m}</option>`).join('')}
           </select>
           <input class="fi2" type="number" id="new-ap-fee-${c.id}" placeholder="Ücret (₺)" style="padding:5px;font-size:11px">
           <input class="fi2" type="text" id="new-ap-notes-${c.id}" placeholder="Not..." style="padding:5px;font-size:11px;grid-column:span 2">
@@ -3187,6 +3186,11 @@ async function openPanel(id, readonly=false){
               <option value="İzmir" ${(c.apptCenter||'')==='İzmir'?'selected':''}>İzmir</option>
               <option value="Antalya" ${(c.apptCenter||'')==='Antalya'?'selected':''}>Antalya</option>
               <option value="Gaziantep" ${(c.apptCenter||'')==='Gaziantep'?'selected':''}>Gaziantep</option>
+              <option value="Bursa" ${(c.apptCenter||'')==='Bursa'?'selected':''}>Bursa</option>
+              <option value="Edirne" ${(c.apptCenter||'')==='Edirne'?'selected':''}>Edirne</option>
+              <option value="Marmaris" ${(c.apptCenter||'')==='Marmaris'?'selected':''}>Marmaris</option>
+              <option value="Tekirdağ-Çorlu" ${(c.apptCenter||'')==='Tekirdağ-Çorlu'?'selected':''}>Tekirdağ-Çorlu</option>
+              <option value="Diyarbakır" ${(c.apptCenter||'')==='Diyarbakır'?'selected':''}>Diyarbakır</option>
             </select>
           </div>
           ${panelReadOnly?'':`<button class="btn btn-primary btn-sm" onclick="saveAppt('${c.id}')">Kaydet</button>`}
