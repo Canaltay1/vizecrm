@@ -1113,7 +1113,7 @@ function showPaymentDetail(){
                 <td style="padding:10px 16px;color:var(--text2)">${p.rep}</td>
                 <td style="padding:10px 16px;text-align:right;color:var(--green);font-weight:600">₺${p.amount.toLocaleString('tr-TR')}</td>
                 <td style="padding:10px 16px;text-align:right;color:var(--text2)">₺${(p.fee||0).toLocaleString('tr-TR')}</td>
-                <td style="padding:10px 16px">${(c.fee>0&&rem<=0)?'<span style="color:var(--green);font-weight:600">✓ Tam</span>':(c.fee<=0?'<span style="color:var(--text3)">— Ödeme Yok</span>':'<span style="color:var(--amber);font-weight:600">₺'+rem.toLocaleString('tr-TR')+' kalan</span>')}</td>
+                <td style="padding:10px 16px">${(p.fee>0&&rem<=0)?'<span style="color:var(--green);font-weight:600">✓ Tam</span>':(p.fee<=0?'<span style="color:var(--text3)">— Ödeme Yok</span>':'<span style="color:var(--amber);font-weight:600">₺'+rem.toLocaleString('tr-TR')+' kalan</span>')}</td>
                 <td style="padding:10px 16px;color:var(--text3);font-size:11px;white-space:nowrap">${p.date?fmtDate(p.date):'—'}</td>
                 <td style="padding:10px 16px;font-size:11px;color:var(--text3)">
                   ${p.lastMod?`<div style="white-space:nowrap">${p.lastMod}</div>`:''}
