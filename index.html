@@ -538,7 +538,7 @@ if (localStorage.getItem('vizecrm_token')) {
     <div class="fg"><label class="fl2">E-posta</label><input class="fi2" placeholder="ornek@email.com" id="nm-email"></div>
     <div class="form-row">
       <div class="fg"><label class="fl2">Hedef Ülke *</label>
-        <select class="fi2" id="nm-country"><option>🇩🇪 Almanya</option><option>🇬🇧 İngiltere</option><option>🇫🇷 Fransa</option><option>🇮🇹 İtalya</option><option>🇪🇸 İspanya</option><option>🇳🇱 Hollanda</option><option>🇧🇪 Belçika</option><option>🇦🇹 Avusturya</option><option>🇨🇭 İsviçre</option><option>🇵🇹 Portekiz</option><option>🇬🇷 Yunanistan</option><option>🇸🇪 İsveç</option><option>🇳🇴 Norveç</option><option>🇩🇰 Danimarka</option><option>🇵🇱 Polonya</option><option>🇨🇿 Çekya</option><option>🇭🇺 Macaristan</option><option>🇮🇪 İrlanda</option><option>🇫🇮 Finlandiya</option><option>🇷🇴 Romanya</option><option>🇧🇬 Bulgaristan</option><option>🇨🇳 Çin</option><option>🇺🇸 Amerika</option></select></div>
+        <select class="fi2" id="nm-country"><option value="">— Ülke Seçin —</option><option>🇩🇪 Almanya</option><option>🇬🇧 İngiltere</option><option>🇫🇷 Fransa</option><option>🇮🇹 İtalya</option><option>🇪🇸 İspanya</option><option>🇳🇱 Hollanda</option><option>🇧🇪 Belçika</option><option>🇦🇹 Avusturya</option><option>🇨🇭 İsviçre</option><option>🇵🇹 Portekiz</option><option>🇬🇷 Yunanistan</option><option>🇸🇪 İsveç</option><option>🇳🇴 Norveç</option><option>🇩🇰 Danimarka</option><option>🇵🇱 Polonya</option><option>🇨🇿 Çekya</option><option>🇭🇺 Macaristan</option><option>🇮🇪 İrlanda</option><option>🇫🇮 Finlandiya</option><option>🇷🇴 Romanya</option><option>🇧🇬 Bulgaristan</option><option>🇨🇳 Çin</option><option>🇺🇸 Amerika</option></select></div>
       <div class="fg"><label class="fl2">Vize Türü</label>
         <select class="fi2" id="nm-visa"><option>Schengen Turistik</option><option>Çalışma Vizesi</option><option>Öğrenci Vizesi</option><option>Aile Birleşimi</option></select></div>
     </div>
@@ -3085,7 +3085,7 @@ async function openPanel(id, readonly=false){
         <div class="fi"><div class="fl">Telefon</div><input class="fi2" id="ed-phone-${c.id}" value="${c.phone}" style="padding:6px;width:100%" ${panelReadOnly?'disabled':''}></div>
         <div class="fi"><div class="fl">E-posta</div><input class="fi2" id="ed-email-${c.id}" value="${c.email||''}" style="padding:6px;width:100%" ${panelReadOnly?'disabled':''}></div>
         <div class="fi"><div class="fl">TC</div><input class="fi2" id="ed-tc-${c.id}" value="${c.tc||''}" placeholder="TC Kimlik No" style="padding:6px;width:100%" maxlength="11" ${panelReadOnly?'disabled':''}></div>
-        <div class="fi"><div class="fl">Ülke</div><select class="fi2" id="ed-country-${c.id}" style="padding:6px;width:100%" ${panelReadOnly?'disabled':''}>
+        <div class="fi"><div class="fl">Ülke</div><select class="fi2" id="ed-country-${c.id}" style="padding:6px;width:100%" ${panelReadOnly?'disabled':''}><option value="">— Ülke Seçin —</option>
           ${['🇩🇪 Almanya','🇬🇧 İngiltere','🇫🇷 Fransa','🇮🇹 İtalya','🇪🇸 İspanya','🇳🇱 Hollanda','🇧🇪 Belçika','🇦🇹 Avusturya','🇨🇭 İsviçre','🇵🇹 Portekiz','🇬🇷 Yunanistan','🇸🇪 İsveç','🇳🇴 Norveç','🇩🇰 Danimarka','🇵🇱 Polonya','🇨🇿 Çekya','🇭🇺 Macaristan','🇮🇪 İrlanda','🇫🇮 Finlandiya','🇷🇴 Romanya','🇧🇬 Bulgaristan','🇨🇳 Çin','🇺🇸 Amerika'].map(o=>`<option ${c.country===o?'selected':''}>${o}</option>`).join('')}
         </select></div>
         <div class="fi"><div class="fl">Vize Türü</div><select class="fi2" id="ed-visa-${c.id}" style="padding:6px;width:100%" ${panelReadOnly?'disabled':''}>
@@ -3230,7 +3230,12 @@ async function openPanel(id, readonly=false){
           </div>
           ${panelReadOnly?'':`<button class="btn btn-primary btn-sm" onclick="saveAppt('${c.id}')">Kaydet</button>`}
         </div>
-        ${c.apptDate?`<div style="font-size:11px;color:var(--green);margin-top:8px;font-weight:600">✅ ${fmtDate(c.apptDate)}${c.apptTime?' · ⏰ '+c.apptTime:''}${c.apptCenter?' · 📍 '+c.apptCenter:''}</div>`:'<div style="font-size:11px;color:var(--text3);margin-top:4px">Henüz kesinleşmedi</div>'}
+        ${(()=>{
+          if(!c.apptDate) return '<div style="font-size:11px;color:var(--text3);margin-top:4px">Henüz kesinleşmedi</div>';
+          const matchApp=applications.find(a=>a.appt_date===c.apptDate);
+          const ownerLabel=matchApp&&matchApp.applicant_name?'<div style="font-size:10px;color:var(--text2);margin-top:3px">👤 '+matchApp.applicant_name+'</div>':'';
+          return '<div style="font-size:11px;color:var(--green);margin-top:8px;font-weight:600">✅ '+fmtDate(c.apptDate)+(c.apptTime?' · ⏰ '+c.apptTime:'')+(c.apptCenter?' · 📍 '+c.apptCenter:'')+'</div>'+ownerLabel;
+        })()}
       </div>
 
     </div>
