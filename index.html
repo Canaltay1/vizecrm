@@ -636,7 +636,7 @@ async function loadCustomers(){
       paymentDate:r.payment_date||'',
       refundStatus:r.refund_status||'',refundAmount:r.refund_amount||0,refundReason:r.refund_reason||'',refundDate:r.refund_date||'',
       refundRequestedBy:r.refund_requested_by||'',refundRequestedAt:r.refund_requested_at||null,
-      callTotal:r.call_total||0,callReached:r.call_reached||0,reminderDate:r.call_reminder_date||''
+      callTotal:r.call_total||0,callReached:r.call_reached||0,reminderDate:r.call_reminder_date||'',appTotal:r.app_total||0,appPending:r.app_pending||0,appPendingNoDate:r.app_pending_no_date||0
     }));
     filtered=[...customers];
   }catch(e){
@@ -1793,7 +1793,7 @@ function renderRows(){
       <td>${c.country}</td>
       <td><span class="badge ${SCLS[c.status]||'b-lead'}">${c.status}</span>${c.visaRenewal?'<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;background:#FEF3C7;color:#D97706;margin-left:4px">🔔 Vize Yenileme</span>':''}</td>
       <td>${c.callTotal===0?'<span style="color:var(--text3)">—</span>':`<span style="color:var(--accent);font-weight:700;font-size:12px">📞${c.callTotal}</span><span style="color:var(--green);font-size:10px;margin-left:4px">${c.callReached}✓</span>`}</td>
-      <td style="font-size:11px;color:${c.apptDate?'var(--accent)':'var(--text3)'}">${c.apptDate?'📅 '+fmtDate(c.apptDate):'—'}</td>
+      <td style="font-size:11px">${c.apptDate?'<span style="color:var(--accent)">📅 '+fmtDate(c.apptDate)+'</span>':'<span style="color:var(--text3)">—</span>'}${c.appPending>0?'<div style="background:var(--amber-bg);color:var(--amber);font-size:9px;font-weight:700;padding:1px 6px;border-radius:8px;margin-top:2px;white-space:nowrap">⚠️ '+c.appPending+' bekliyor</div>':''}</td>
       <td style="font-size:11px;color:${(c.prepay>0&&rem<=0)?'var(--green)':(c.prepay<=0?'var(--text3)':'var(--amber)')};font-weight:600">${(c.prepay>0&&rem<=0)?'✓ Tam':(c.prepay<=0?'—':'₺'+rem.toLocaleString('tr-TR'))}</td>
       <td>${repCellHTML(c)}</td>
       <td style="font-size:10px;color:var(--text3)">🕐 ${c.lastMod}</td>
@@ -3107,7 +3107,9 @@ async function openPanel(id, readonly=false){
   </div>
 
   <div class="ps">
-    <div class="ps-head"><div class="ps-title">🌍 Başvurular <span style="font-weight:400;color:var(--text2)">(${applications.length})</span></div></div>
+    <div class="ps-head"><div class="ps-title">🌍 Başvurular <span style="font-weight:400;color:var(--text2)">(${applications.length})</span></div>
+      ${applications.length>0?('<span style="font-size:11px;font-weight:700;color:'+(applications.every(a=>a.status==='Tamamlandı')?'var(--green)':'var(--amber)')+'">'+applications.filter(a=>a.status==='Tamamlandı').length+'/'+applications.length+' tamamlandı</span>'):''}
+    </div>
     <div class="ps-body" style="display:flex;flex-direction:column;gap:10px">
       ${applications.length===0?'<div style="font-size:12px;color:var(--text3)">Henüz başvuru eklenmedi.</div>':''}
       ${applications.map(ap=>`
@@ -3861,22 +3863,15 @@ async function deleteCustomer(id){
 }
 
 
-async function markApplicationDone(custId, appId, remainingCount) {
+async function markApplicationDone(custId, appId) {
   if (!confirm('Bu kişinin başvurusu yapıldı olarak işaretlenecek. Onaylıyor musunuz?')) return;
   try {
     const res = await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'updateApplicationStatus',customerId:custId,appId,appStatus:'Tamamlandı',token:CU.token})});
     const d = await res.json();
     if (!d.success) { toast('Hata: '+(d.error?.message||'Güncellenemedi'),'red'); return; }
-    toast('✓ Başvuru yapıldı olarak işaretlendi','green');
-    // Kalan bekleyen başvuru varsa sonraki randevu tarihini sor
-    if (remainingCount > 0) {
-      const nextDate = prompt('Bir sonraki kişinin randevu tarihi nedir? (YYYY-AA-GG formatında, örn: 2026-07-09)\nBoş bırakırsanız tarih güncellenmez:');
-      if (nextDate && /^\d{4}-\d{2}-\d{2}$/.test(nextDate)) {
-        await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'updateAppt',customerId:custId,apptDate:nextDate,apptTime:'',apptCenter:'',token:CU.token})});
-        toast('📅 Ana randevu tarihi güncellendi: '+fmtDate(nextDate),'green');
-      }
-    }
+    toast('✓ Başvuru yapıldı olarak işaretlendi — sistem güncellendi','green');
     await loadCustomers();
+    renderRows();
     await openPanel(custId, panelReadOnly);
   } catch(e) { toast('Bağlantı hatası','red'); }
 }
