@@ -1693,7 +1693,11 @@ async function bulkAddNote(){
 }
 function renderCusts(){
   // Konsolosluk sonucu bekleyen müşteriler ayrı sayfada (Konsolosluk Takibi), bu listede gösterilmez
-  filtered=customers.filter(c=>!CONSULATE_WAIT_S.includes(c.status));
+  // İlgilenmiyor: satışçı/evrakçı/randevu görmez, yönetici ayrı bölümde görür
+  const ilgilenmiyorList = CU.role==='management'
+    ? customers.filter(c=>c.status==='İlgilenmiyor')
+    : [];
+  filtered=customers.filter(c=>!CONSULATE_WAIT_S.includes(c.status)&&c.status!=='İlgilenmiyor');
   const todayRem=customers.filter(c=>c.reminderDate===getTodayStr());
   const reps=[...new Set(customers.flatMap(c=>{
     const list=[c.rep];
@@ -1779,7 +1783,34 @@ function renderCusts(){
       <tbody id="cust-tbody"></tbody>
     </table>
     </div>
-  </div>`;
+  </div>
+  ${CU.role==='management'&&ilgilenmiyorList.length>0?`
+  <details style="margin-top:16px;background:var(--bg);border:1px solid var(--border);border-radius:12px;overflow:hidden">
+    <summary style="padding:14px 18px;cursor:pointer;font-size:13px;font-weight:600;color:var(--text2);list-style:none;display:flex;align-items:center;justify-content:space-between">
+      <span>😶 İlgilenmiyor <span style="background:var(--surface2);color:var(--text2);border-radius:20px;padding:2px 10px;font-size:11px;margin-left:6px">${ilgilenmiyorList.length} müşteri</span></span>
+      <span style="font-size:11px;color:var(--text3)">Detaylar için tıkla ▼</span>
+    </summary>
+    <div style="border-top:1px solid var(--border)">
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr style="background:var(--surface2)">
+          <th style="padding:8px 14px;text-align:left;font-weight:500;color:var(--text2)">Müşteri</th>
+          <th style="padding:8px 14px;text-align:left;font-weight:500;color:var(--text2)">Telefon</th>
+          <th style="padding:8px 14px;text-align:left;font-weight:500;color:var(--text2)">Ülke</th>
+          <th style="padding:8px 14px;text-align:left;font-weight:500;color:var(--text2)">Temsilci</th>
+          <th style="padding:8px 14px;text-align:left;font-weight:500;color:var(--text2)">Son Güncelleme</th>
+        </tr></thead>
+        <tbody>
+          ${ilgilenmiyorList.map(c=>`<tr onclick="openPanel('${c.id}')" style="cursor:pointer;border-bottom:1px solid var(--border)" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
+            <td style="padding:9px 14px;font-weight:600;color:var(--text2)">${c.name}</td>
+            <td style="padding:9px 14px;color:var(--text2)">${c.phone}</td>
+            <td style="padding:9px 14px;color:var(--text2)">${c.country||'—'}</td>
+            <td style="padding:9px 14px;color:var(--text2)">${c.rep||'—'}</td>
+            <td style="padding:9px 14px;font-size:11px;color:var(--text3)">${c.lastMod}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+  </details>`:''}`;
   renderRows();
 }
 
@@ -1823,9 +1854,9 @@ function renderRows(){
   }).join('');
 }
 
-function fC(q){const sq=q.toLowerCase();filtered=customers.filter(c=>!CONSULATE_WAIT_S.includes(c.status)&&(c.name.toLowerCase().includes(sq)||c.id.toLowerCase().includes(sq)||c.phone.includes(sq)));renderRows();}
-function fS(s){filtered=customers.filter(c=>!CONSULATE_WAIT_S.includes(c.status)&&(!s||c.status===s));renderRows();}
-function fCo(s){filtered=customers.filter(c=>!CONSULATE_WAIT_S.includes(c.status)&&(!s||c.country===s));renderRows();}
+function fC(q){const sq=q.toLowerCase();filtered=customers.filter(c=>!CONSULATE_WAIT_S.includes(c.status)&&(CU.role==='management'||c.status!=='İlgilenmiyor')&&(c.name.toLowerCase().includes(sq)||c.id.toLowerCase().includes(sq)||c.phone.includes(sq)));renderRows();}
+function fS(s){filtered=customers.filter(c=>!CONSULATE_WAIT_S.includes(c.status)&&(CU.role==='management'||c.status!=='İlgilenmiyor')&&(!s||c.status===s));renderRows();}
+function fCo(s){filtered=customers.filter(c=>!CONSULATE_WAIT_S.includes(c.status)&&(CU.role==='management'||c.status!=='İlgilenmiyor')&&(!s||c.country===s));renderRows();}
 
 // PIPELINE
 const KSTAGES=['Yeni Kayıt','Sonra Ara','Ulaşılamıyor','İlgileniyor','İletişime Geçildi','Ödeme Alındı','Belge Bekleniyor','Belgeler Tamam','Randevu Aranıyor','Randevu Alındı','Randevu Evrakları Hazırlanıyor','Randevu Evrakları Tamamlandı','Başvuru Yapıldı','Sonuç Bekleniyor','Tamamlandı'];
