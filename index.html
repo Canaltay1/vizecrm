@@ -1444,6 +1444,7 @@ const FUNNEL_COLORS=['#6B7280','#2563EB','#7C3AED','#D97706','#059669'];
 const WARN_SALES_S=['Yeni Kayıt','Sonra Ara','Ulaşılamıyor','İlgileniyor','İletişime Geçildi'];
 const WARN_EVRAK_S=['Ödeme Alındı','Belge Bekleniyor','Belgeler Tamam','Randevu Aranıyor','Randevu Alındı','Randevu Evrakları Hazırlanıyor'];
 const WARN_RANDEVU_S=['Randevu Evrakları Tamamlandı'];
+const POST_SALES_STAGES=['Ödeme Alındı','Belge Bekleniyor','Belgeler Tamam','Randevu Aranıyor','Randevu Alındı','Randevu Evrakları Hazırlanıyor','Randevu Evrakları Tamamlandı','Başvuru Yapıldı','Sonuç Bekleniyor','Tamamlandı','İptal'];
 const CONSULATE_WAIT_S=['Başvuru Yapıldı','Sonuç Bekleniyor'];
 
 function buildWarningsHTML(){
@@ -3236,7 +3237,7 @@ async function openPanel(id, readonly=false){
       <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px 14px">
         <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">🗓 İstenilen Randevu Tarihi</div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <input type="text" class="fi2" id="ap-desired-${c.id}" value="${c.desiredApptDate||''}" placeholder="Örn: Temmuz sonu, 15-20 Ağustos..." style="padding:6px;flex:1;min-width:180px" ${(panelReadOnly||CU.role==='evrak'||CU.role==='randevu')?'disabled':''}>
+          <input type="text" class="fi2" id="ap-desired-${c.id}" value="${c.desiredApptDate||''}" placeholder="Örn: Temmuz sonu, 15-20 Ağustos..." style="padding:6px;flex:1;min-width:180px" ${panelReadOnly?'disabled':''}>
           ${(CU.role==='sales'||CU.role==='management')?`<button class="btn btn-primary btn-sm" onclick="saveDesiredAppt('${c.id}')">Kaydet</button>`:''}
         </div>
         ${c.desiredApptDate?`<div style="font-size:11px;color:var(--accent);margin-top:8px">📌 ${c.desiredApptDate}</div>`:''}
@@ -3334,7 +3335,7 @@ async function openPanel(id, readonly=false){
 
 
 
-  ${(CU.role==='management'||CU.role==='evrak')?renderCustExpPanel(c.id,panelCustExpenses,panelReadOnly&&!panelSalesView):''}
+  ${(CU.role==='management'||CU.role==='evrak'||CU.role==='randevu')?renderCustExpPanel(c.id,panelCustExpenses,panelReadOnly&&!panelSalesView):''}
   <div class="ps">
     <div class="ps-head"><div class="ps-title">Belgeler</div></div>
     <div class="ps-body" style="display:flex;flex-direction:column;gap:6px">
@@ -3354,7 +3355,7 @@ async function openPanel(id, readonly=false){
         }
         </div>
       </div>`;}).join('')}
-    ${(!panelReadOnly||panelSalesView)&&(CU.role==='management'||CU.role==='evrak'||CU.role==='sales')?`
+    ${(!panelReadOnly||panelSalesView)&&(CU.role==='management'||CU.role==='evrak'||CU.role==='randevu'||CU.role==='sales')?`
     <div style="display:flex;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
       <input class="fi2" id="new-doc-${c.id}" type="text" placeholder="Belge adı (örn: Davet Mektubu)" style="padding:6px;flex:1;font-size:11px">
       <button class="btn btn-primary btn-sm" onclick="addNewDocument('${c.id}')">+ Ekle</button>
@@ -3522,7 +3523,7 @@ async function loadFiles(customerId){
     }
     function fmtSize(b){if(b<1024)return b+'B';if(b<1048576)return (b/1024).toFixed(1)+'KB';return (b/1048576).toFixed(1)+'MB';}
     function fmtFileName(n){const parts=n.split('_');return parts.length>1?parts.slice(1).join('_'):n;}
-    const canDelete=CU.role==='management'||CU.role==='evrak'||(CU.role==='sales');
+    const canDelete=CU.role==='management'||CU.role==='evrak'||CU.role==='randevu'||(CU.role==='sales');
     listEl.innerHTML=files.map(f=>`
       <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:var(--surface2);border-radius:7px;border:1px solid var(--border);gap:8px">
         <div style="flex:1;min-width:0">
