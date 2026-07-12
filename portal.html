@@ -34,6 +34,9 @@
     .step.pending .step-icon{background:#F3F4F6;color:#D1D5DB}
     .step.cancelled .step-icon{background:#FEE2E2;color:#DC2626}
     .step.cancelled .step-name{color:#DC2626}
+    .result-banner{border-radius:12px;padding:14px 16px;margin-top:14px;font-size:13px;font-weight:700;text-align:center}
+    .result-banner.completed{background:#DCFCE7;color:#166534;border:1px solid #86EFAC}
+    .result-banner.cancelled{background:#FEE2E2;color:#991B1B;border:1px solid #FCA5A5}
     .step-text{padding-top:5px}
     .step-name{font-size:14px;font-weight:600;color:#374151}
     .step.pending .step-name{color:#9CA3AF}
@@ -93,8 +96,6 @@ const STEPS = [
   {key:'randevu_evrak_h',  label:'Randevu Evrakları Hazırlanıyor',statuses:['Randevu Evrakları Hazırlanıyor']},
   {key:'randevu_evrak_t',  label:'Randevu Evrakları Tamamlandı',  statuses:['Randevu Evrakları Tamamlandı']},
   {key:'basvuru_yapildi',  label:'Başvuru Yapıldı',                statuses:['Başvuru Yapıldı']},
-  {key:'sonuc_bekleniyor', label:'Sonuç Bekleniyor',              statuses:['Sonuç Bekleniyor']},
-  {key:'sonuc',            label:'Sonuç',                         statuses:['Tamamlandı','İptal']},
 ];
 
 function fmtDate(d) {
@@ -141,12 +142,15 @@ function stepIcon(state) {
 
 function render(data) {
   const status = data.status;
-  const stepIdx = STEPS.findIndex(s => s.statuses.includes(status));
+  const rawStepIdx = STEPS.findIndex(s => s.statuses.includes(status));
+  // Durum listedeki adımların ötesindeyse (Sonuç Bekleniyor / Tamamlandı / İptal) tüm adımlar tamamlanmış sayılır
+  const isBeyondSteps = rawStepIdx === -1;
+  const stepIdx = isBeyondSteps ? STEPS.length : rawStepIdx;
   const isCancelled = status === 'İptal';
+  const isCompleted = status === 'Tamamlandı';
 
   const stepsHTML = STEPS.map((step, i) => {
     let state = i < stepIdx ? 'done' : i === stepIdx ? 'active' : 'pending';
-    if (step.key === 'sonuc' && i === stepIdx && isCancelled) state = 'cancelled';
     let sub = '';
     // Randevu tarihi belliyse, randevu alındıktan sonraki her adımda hatırlatma olarak göster
     if (step.key === 'randevu_alindi' && (state === 'done' || state === 'active') && data.apptDate) {
@@ -155,9 +159,7 @@ function render(data) {
         ${data.apptCenter ? '<span>📍 ' + esc(data.apptCenter) + '</span>' : ''}
       </div>`;
     }
-    if (state === 'cancelled') {
-      sub = '<span style="font-size:12px;color:#DC2626;font-weight:600">Başvuru iptal edildi</span>' + sub;
-    } else if (state === 'active') {
+    if (state === 'active') {
       sub = '<span style="font-size:12px;color:#3B82F6;font-weight:500">← Şu an burada</span>' + sub;
     }
     return `<div class="step ${state}">
@@ -184,6 +186,12 @@ function render(data) {
   </div>
   ${repsHTML}`;
 
+  const resultBannerHTML = isCompleted
+    ? `<div class="result-banner completed">✅ Başvurunuz tamamlandı</div>`
+    : isCancelled
+      ? `<div class="result-banner cancelled">✕ Başvuru iptal edildi</div>`
+      : '';
+
   document.getElementById('content').innerHTML = `
     <div class="section">
       <div class="file-no">${esc(data.fileNumber)}</div>
@@ -193,6 +201,7 @@ function render(data) {
     <div class="section">
       <div class="status-label">Başvuru Durumu</div>
       <div class="steps">${stepsHTML}</div>
+      ${resultBannerHTML}
     </div>
     <div class="section">
       <div class="status-label">İletişim</div>
