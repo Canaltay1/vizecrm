@@ -2130,6 +2130,28 @@ function exportConsulateExcel(){
   toast('✓ Excel indirildi ('+list.length+' müşteri)','green');
 }
 
+
+async function generatePortalLink(custId) {
+  try {
+    const res = await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'generatePortalToken',customerId:custId,token:CU.token})});
+    const d = await res.json();
+    if (!d.success) { toast('Link oluşturulamadı','red'); return; }
+    const link = window.location.origin + '/vizecrm/portal.html?t=' + d.token;
+    const el = document.getElementById('portal-link-'+custId);
+    if (el) el.innerHTML = '🔗 <a href="'+link+'" target="_blank" style="color:var(--accent)">'+link+'</a>';
+    navigator.clipboard?.writeText(link);
+    toast('✓ Portal linki oluşturuldu ve kopyalandı','green');
+  } catch(e) { toast('Bağlantı hatası','red'); }
+}
+
+async function copyPortalLink(custId) {
+  const el = document.getElementById('portal-link-'+custId);
+  const link = el?.querySelector('a')?.href;
+  if (!link) { toast('Önce yeni link oluşturun','amber'); return; }
+  navigator.clipboard?.writeText(link);
+  toast('✓ Link kopyalandı','green');
+}
+
 async function saveVisaResult(id) {
   const result = document.getElementById('vr-'+id)?.value||'';
   const start = document.getElementById('vs-'+id)?.value||'';
@@ -3744,6 +3766,18 @@ async function openPanel(id, readonly=false){
       </div>
     </div>
   </div>
+  ${CU.role==='management'?`<div class="ps">
+    <div class="ps-head"><div class="ps-title">🔗 Müşteri Portalı</div></div>
+    <div class="ps-body">
+      <div style="font-size:12px;color:var(--text2);margin-bottom:10px">Müşteri kendi başvurusunu takip edebilir. Link 90 gün geçerlidir.</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-primary btn-sm" onclick="generatePortalLink('${c.id}')">🔗 Yeni Link Oluştur</button>
+        <button class="btn btn-ghost btn-sm" onclick="copyPortalLink('${c.id}')">📋 Linki Kopyala</button>
+      </div>
+      <div id="portal-link-${c.id}" style="font-size:11px;color:var(--text3);margin-top:8px;word-break:break-all"></div>
+    </div>
+  </div>`:''
+  }
   <div class="ps">
     <div class="ps-head"><div class="ps-title" style="color:var(--red)">⚠️ Tehlikeli Bölge</div></div>
     <div class="ps-body" style="display:flex;align-items:center;justify-content:space-between">
