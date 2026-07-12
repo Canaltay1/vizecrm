@@ -584,6 +584,10 @@ const USERS=[];
 let CU=null;
 
 const STAGES=['Yeni Kayıt','Sonra Ara','Ulaşılamıyor','İlgileniyor','İlgilenmiyor','İletişime Geçildi','Ödeme Alındı','Belge Bekleniyor','Belgeler Tamam','Randevu Aranıyor','Randevu Alındı','Randevu Evrakları Hazırlanıyor','Randevu Evrakları Tamamlandı','Başvuru Yapıldı','Sonuç Bekleniyor','Tamamlandı','İptal'];
+// ⚠️ SENKRONİZASYON UYARISI: Bu dosyadaki durum (status) listeleri (SCLS, PRESALE_STAGES,
+// WARN_EVRAK_S, WARN_RANDEVU_S, CONSULATE_WAIT_S, KSTAGES, KCOLS) bright-handler-v14.ts (backend,
+// SALES_STAGES/EVRAK_STAGES/RANDEVU_STAGES) ve portal.html (STEPS) ile elle senkron tutuluyor.
+// Yeni bir durum eklerken/çıkarırken/adını değiştirirken HER ÜÇ dosyayı da güncelleyin.
 const SCLS={'Yeni Kayıt':'b-lead','Sonra Ara':'b-callback','Ulaşılamıyor':'b-unreachable','İlgileniyor':'b-interested','İlgilenmiyor':'b-notinterested','İletişime Geçildi':'b-contacted','Ödeme Alındı':'b-payment','Belge Bekleniyor':'b-docs-pending','Belgeler Tamam':'b-docs-done','Randevu Aranıyor':'b-appt-search','Randevu Alındı':'b-appt-sched','Randevu Evrakları Hazırlanıyor':'b-docs-pending','Randevu Evrakları Tamamlandı':'b-docs-done','Başvuru Yapıldı':'b-submitted','Sonuç Bekleniyor':'b-waiting','Tamamlandı':'b-completed','İptal':'b-cancelled'};
 const MONTHS=['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'];
 function repColorHash(name){if(!name||name==='—')return'#2563EB';const cols=['#2563EB','#D97706','#059669','#DC2626','#0891B2','#7C3AED','#0D9488','#DB2777','#EA580C','#65A30D'];let h=0;for(let i=0;i<name.length;i++)h=name.charCodeAt(i)+((h<<5)-h);return cols[Math.abs(h)%cols.length];}
@@ -1490,11 +1494,11 @@ function renderDashFilterBar(){
       <span style="font-size:12px;color:var(--text3)">—</span>
       <input type="date" class="fi2" value="${dashDateTo}" style="padding:5px 8px;font-size:12px;width:140px" onchange="dashDateTo=this.value;muhDateTo=this.value;renderDashBody()">
     </div>`:''}
-    <select class="sel" onchange="dashRep=this.value;renderDashBody()">
+    <select class="sel" onchange="dashRep=this.value;renderDashFilterBar();renderDashBody()">
       <option value="">Tüm Temsilciler</option>
       ${reps.map(r=>`<option value="${r}" ${dashRep===r?'selected':''}>${r}</option>`).join('')}
     </select>
-    <select class="sel" onchange="dashCountry=this.value;renderDashBody()">
+    <select class="sel" onchange="dashCountry=this.value;renderDashFilterBar();renderDashBody()">
       <option value="">Tüm Ülkeler</option>
       ${countries.map(c=>`<option value="${c}" ${dashCountry===c?'selected':''}>${c}</option>`).join('')}
     </select>
@@ -4263,12 +4267,15 @@ async function openAddUserForm(){
   if(!password)return;
   const name=prompt('Ad Soyad:');
   if(!name)return;
-  
+  const roleInput=(prompt('Departman (sales / evrak / randevu / management) — boş bırakırsanız "sales" olur:')||'').trim().toLowerCase();
+  const validRoles=['sales','evrak','randevu','management'];
+  const role=validRoles.includes(roleInput)?roleInput:'sales';
+
   try{
-    const res=await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'addUser',username:username.trim(),password:password.trim(),name:name.trim(),token:CU.token})});
+    const res=await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'addUser',username:username.trim(),password:password.trim(),name:name.trim(),newRole:role,token:CU.token})});
     const d=await res.json();
     if(!d.success){toast('Hata: '+(d.error||'Eklenemedi'),'red');return;}
-    toast('✓ Kullanıcı eklendi','green');
+    toast('✓ Kullanıcı eklendi ('+role+')','green');
     renderUsers();
   }catch(e){
     toast('Bağlantı hatası','red');
@@ -4347,7 +4354,7 @@ async function updateApplication(customerId,appId){
   const text=document.getElementById('ap-apn2-'+appId)?.value.trim()||'';
   const fee=parseInt(document.getElementById('ap-fee-'+appId)?.value)||0;
   try{
-    const res=await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'updateApplication',customerId,companionId:appId,name,apptDate,apptTime,apptCenter,text,fee,token:CU.token})});
+    const res=await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'updateApplication',customerId,applicationId:appId,name,apptDate,apptTime,apptCenter,text,fee,token:CU.token})});
     const d=await res.json();
     if(!d.success){toast('Hata: '+JSON.stringify(d.error||'Güncellenemedi'),'red');return;}
     await openPanel(customerId);
@@ -4357,7 +4364,7 @@ async function updateApplication(customerId,appId){
 async function deleteApplication(customerId,appId){
   if(!confirm('Bu başvuruyu silmek istediğine emin misin?'))return;
   try{
-    const res=await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'deleteApplication',customerId,companionId:appId,token:CU.token})});
+    const res=await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'deleteApplication',customerId,applicationId:appId,token:CU.token})});
     const d=await res.json();
     if(!d.success){toast('Hata: '+JSON.stringify(d.error||'Silinemedi'),'red');return;}
     await openPanel(customerId);
