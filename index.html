@@ -330,9 +330,9 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 .kcard-days{font-size:10px;color:var(--text3)}.kcard-days.stale{color:var(--red);font-weight:700}
 
 /* ===== DETAIL PANEL ===== */
-.panel-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.25);z-index:150;backdrop-filter:blur(1px)}
+.panel-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.25);z-index:10100;backdrop-filter:blur(1px)}
 .panel-overlay.open{display:block}
-.detail-panel{display:none;position:fixed;right:0;top:0;width:468px;height:100vh;background:#fff;border-left:1px solid var(--border);z-index:200;overflow-y:auto;box-shadow:-4px 0 32px rgba(0,0,0,.08)}
+.detail-panel{display:none;position:fixed;right:0;top:0;width:468px;height:100vh;background:#fff;border-left:1px solid var(--border);z-index:10200;overflow-y:auto;box-shadow:-4px 0 32px rgba(0,0,0,.08)}
 .detail-panel.open{display:block;animation:slideIn .2s ease}
 @keyframes slideIn{from{transform:translateX(20px);opacity:.6}to{transform:translateX(0);opacity:1}}
 .panel-top{padding:18px 20px 14px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;justify-content:space-between;position:sticky;top:0;background:#fff;z-index:10}
