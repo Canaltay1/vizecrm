@@ -778,6 +778,8 @@ function showApprovedDetail() {
 }
 
 function showWarningModal(level) {
+  // Race condition fix: eğer uyarılar henüz yüklenmemişse önce hesapla
+  if(_dashWarnings.length===0) buildWarningsHTML();
   var filtered = _dashWarnings.filter(function(w){return w.level===level;});
   var list = filtered.map(function(w){return Object.assign({},w.c,{_msg:w.msg,_level:w.level});});
   _showDashModal(level==='crit'?'🔴 Kritik Uyarılar':'⚠️ Uyarılar', list, [
@@ -896,7 +898,12 @@ function resetAllFilters(){
   tableRepFilter='';
   tableColSearch='';
   filtered=customers.filter(c=>!CONSULATE_WAIT_S.includes(c.status));
-  const todayRem=customers.filter(c=>c.reminderDate===getTodayStr());
+  const todayRem=customers.filter(c=>c.reminderDate===getTodayStr()&&(
+    CU.role==='management'||
+    (CU.role==='sales'&&c.rep===CU.name)||
+    (CU.role==='evrak'&&c.evrakRep===CU.name)||
+    (CU.role==='randevu'&&c.randevuRep===CU.name)
+  ));
   renderCusts();
 }
 
@@ -1129,7 +1136,12 @@ function inDashPeriod(c,period){
   return true;
 }
 function getDashFiltered(){
-  return customers.filter(c=>inDashPeriod(c,dashPeriod)&&(!dashRep||c.rep===dashRep)&&(!dashCountry||c.country===dashCountry));
+  return customers.filter(c=>
+    c.status!=='İlgilenmiyor'&&
+    inDashPeriod(c,dashPeriod)&&
+    (!dashRep||c.rep===dashRep)&&
+    (!dashCountry||c.country===dashCountry)
+  );
 }
 // Ödeme bazlı ciro hesaplaması: ödeme ne zaman ALINDIYSA o tarihe göre filtreler (kayıt tarihine göre değil)
 function inPaymentPeriod(c,period){
@@ -2128,6 +2140,12 @@ async function saveVisaResult(id) {
     const d = await res.json();
     if (!d.success) { toast('Hata: '+(d.error?.message||'Kaydedilemedi'),'red'); return; }
     toast('✅ Vize sonucu kaydedildi','green');
+    // Onaylandı → Tamamlandı, Reddedildi → İptal
+    if(result==='Onaylandı') {
+      await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'updateCustomerStatus',customerId:id,newStatus:'Tamamlandı',token:CU.token})});
+    } else if(result==='Reddedildi') {
+      await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'updateCustomerStatus',customerId:id,newStatus:'İptal',token:CU.token})});
+    }
     await loadCustomers();
     renderConsulate();
   } catch(e) { toast('Bağlantı hatası','red'); }
@@ -4254,22 +4272,9 @@ async function collectKalan(id, totalFee){
     if(document.getElementById('cust-tbody'))renderRows();
     const dateLabel = paymentDate ? fmtDate(paymentDate) : 'bugün';
     toast('✓ '+fmtTL(amount)+' tahsil edildi — '+dateLabel+' tarihi ile kaydedildi','green');
-  } catch(e){ toast('Bağlantı hatası','red'); }
-}
-async function markPaid(id){
-  try{
-    const res=await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'markPaid',customerId:id,token:CU.token})});
-    const d=await res.json();
-    if(!d.success){toast('Hata: '+JSON.stringify(d.error||'İşlem yapılamadı'),'red');return;}
-    await loadCustomers();
-    await loadAllPayments();
-    await openPanel(id);
     if(document.getElementById('cust-tbody'))renderRows();
     if(document.getElementById('kanban'))renderPipeline();
-    toast('✓ Kalan ödeme tahsil edildi','green');
-  }catch(e){
-    toast('Bağlantı hatası','red');
-  }
+  } catch(e){ toast('Bağlantı hatası','red'); }
 }
 async function addCall(id){
   const r=document.getElementById('cl-r-'+id)?.value,nt=(document.getElementById('cl-n-'+id)?.value||'').trim();
@@ -4285,6 +4290,14 @@ async function addCall(id){
   }catch(e){
     toast('Bağlantı hatası','red');
   }
+}
+
+function filterNotes(custId) {
+  var q=(document.getElementById('note-search-'+custId)?.value||'').toLowerCase();
+  var items=document.querySelectorAll('#notes-list-'+custId+' .note-item');
+  items.forEach(function(el){
+    el.style.display=(!q||el.textContent.toLowerCase().includes(q))?'':'none';
+  });
 }
 async function saveNote(id){
   const inp=document.getElementById('ni-'+id);const text=(inp?.value||'').trim();
