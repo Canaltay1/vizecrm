@@ -594,6 +594,9 @@ let filtered=[];
 let tableSort={col:'',dir:'asc'};
 let tableRepFilter='';
 let tableColSearch='';
+let custSearchQuery='';
+let custStatusFilter=[]; // çoklu seçim — boşsa tüm aşamalar
+let custCountryFilter='';
 let panelReadOnly=false;
 let panelSalesView=false;
 let panelPayments=[];
@@ -897,7 +900,10 @@ function resetAllFilters(){
   tableSort={col:'',dir:'asc'};
   tableRepFilter='';
   tableColSearch='';
-  filtered=customers.filter(c=>!CONSULATE_WAIT_S.includes(c.status)&&c.status!=='İlgilenmiyor');
+  custSearchQuery='';
+  custStatusFilter=[];
+  custCountryFilter='';
+  filtered=computeCustFiltered();
   const todayRem=customers.filter(c=>c.reminderDate===getTodayStr()&&(
     CU.role==='management'||
     (CU.role==='sales'&&c.rep===CU.name)||
@@ -1493,6 +1499,7 @@ function renderDashFilterBar(){
       ${countries.map(c=>`<option value="${c}" ${dashCountry===c?'selected':''}>${c}</option>`).join('')}
     </select>
     ${active?`<button class="btn btn-ghost btn-sm" onclick="dashPeriod='all';dashRep='';dashCountry='';dashDateFrom='';dashDateTo='';renderDash()">✕ Temizle</button>`:''}
+    ${CU.role==='management'?`<button class="btn btn-primary btn-sm" style="margin-left:auto" onclick="exportAllCustomersExcel()">📥 Excel'e Aktar${active?` <span style="background:rgba(255,255,255,0.25);border-radius:10px;padding:0px 6px;font-size:9px;margin-left:2px">Filtrelenmiş</span>`:''}</button>`:''}
   </div>`;
 }
 
@@ -1855,13 +1862,60 @@ async function bulkAddNote(){
   if(inp)inp.value='';
   toast('✓ '+ok+'/'+ids.length+' müşteriye not eklendi','green');
 }
+const STAGE_GROUPS=[
+  {label:'📞 İletişim',options:['Yeni Kayıt','Sonra Ara','Ulaşılamıyor','İlgileniyor','İlgilenmiyor','İletişime Geçildi']},
+  {label:'💼 Satış',options:['Ödeme Alındı']},
+  {label:'📋 Operasyon',options:['Belge Bekleniyor','Belgeler Tamam','Randevu Aranıyor','Randevu Alındı','Randevu Evrakları Hazırlanıyor','Randevu Evrakları Tamamlandı']},
+  {label:'✅ Sonuç',options:['Tamamlandı','İptal']},
+];
+
+// Arama + aşama (çoklu) + ülke filtrelerini AND mantığıyla birleştirir
+function computeCustFiltered(){
+  const sq=custSearchQuery.toLowerCase();
+  return customers.filter(c=>{
+    if(CONSULATE_WAIT_S.includes(c.status))return false;
+    if(CU.role!=='management'&&c.status==='İlgilenmiyor')return false;
+    if(sq&&!((c.name&&c.name.toLowerCase().includes(sq))||(c.id&&c.id.toLowerCase().includes(sq))||(c.phone&&c.phone.includes(sq))))return false;
+    if(custStatusFilter.length>0&&!custStatusFilter.includes(c.status))return false;
+    if(custCountryFilter&&c.country!==custCountryFilter)return false;
+    return true;
+  });
+}
+function applyCustFilters(){filtered=computeCustFiltered();renderRows();}
+function fC(q){custSearchQuery=q;applyCustFilters();}
+function fCo(s){custCountryFilter=s;applyCustFilters();}
+function toggleCustStatus(status,checked){
+  if(checked){if(!custStatusFilter.includes(status))custStatusFilter.push(status);}
+  else{custStatusFilter=custStatusFilter.filter(s=>s!==status);}
+  updateStageFilterLabel();
+  applyCustFilters();
+}
+function clearCustStatusFilter(){custStatusFilter=[];renderCusts();}
+function updateStageFilterLabel(){
+  const el=document.getElementById('stage-filter-label');
+  if(!el)return;
+  el.textContent=custStatusFilter.length===0?'Tüm aşamalar':(custStatusFilter.length===1?custStatusFilter[0]:custStatusFilter.length+' aşama seçili');
+}
+function toggleStageDropdown(ev){
+  ev.stopPropagation();
+  const panel=document.getElementById('stage-filter-panel');
+  if(panel)panel.style.display=panel.style.display==='none'?'block':'none';
+}
+document.addEventListener('click',function(ev){
+  const panel=document.getElementById('stage-filter-panel');
+  const btn=document.getElementById('stage-filter-btn');
+  if(panel&&panel.style.display==='block'&&!panel.contains(ev.target)&&ev.target!==btn&&!btn.contains(ev.target)){
+    panel.style.display='none';
+  }
+});
+
 function renderCusts(){
   // Konsolosluk sonucu bekleyen müşteriler ayrı sayfada (Konsolosluk Takibi), bu listede gösterilmez
   // İlgilenmiyor: satışçı/evrakçı/randevu görmez, yönetici ayrı bölümde görür
   const ilgilenmiyorList = CU.role==='management'
     ? customers.filter(c=>c.status==='İlgilenmiyor')
     : [];
-  filtered=customers.filter(c=>!CONSULATE_WAIT_S.includes(c.status)&&c.status!=='İlgilenmiyor');
+  filtered=computeCustFiltered();
   const todayRem=customers.filter(c=>c.reminderDate===getTodayStr());
   const reps=[...new Set(customers.flatMap(c=>{
     const list=[c.rep];
@@ -1885,16 +1939,32 @@ function renderCusts(){
     <button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="clearBulkSelection()">✕ İptal</button>
   </div>
   <div class="filter-bar">
-    <div class="sw"><input class="si" placeholder="İsim, telefon veya dosya no..." oninput="fC(this.value)"></div>
-    <select class="sel" onchange="fS(this.value)">
-      <option value="">Tüm aşamalar</option>
-      <optgroup label="📞 İletişim"><option>Yeni Kayıt</option><option>Sonra Ara</option><option>Ulaşılamıyor</option><option>İlgileniyor</option><option>İlgilenmiyor</option><option>İletişime Geçildi</option></optgroup>
-      <optgroup label="💼 Satış"><option>Ödeme Alındı</option></optgroup>
-      <optgroup label="📋 Operasyon"><option>Belge Bekleniyor</option><option>Belgeler Tamam</option><option>Randevu Aranıyor</option><option>Randevu Alındı</option><option>Randevu Evrakları Hazırlanıyor</option><option>Randevu Evrakları Tamamlandı</option></optgroup>
-      <optgroup label="✅ Sonuç"><option>Tamamlandı</option><option>İptal</option></optgroup>
-    </select>
+    <div class="sw"><input class="si" placeholder="İsim, telefon veya dosya no..." value="${esc(custSearchQuery)}" oninput="fC(this.value)"></div>
+    <div style="position:relative">
+      <button type="button" class="sel" id="stage-filter-btn" onclick="toggleStageDropdown(event)" style="cursor:pointer;text-align:left;min-width:150px;display:flex;align-items:center;justify-content:space-between;gap:6px">
+        <span id="stage-filter-label">${custStatusFilter.length===0?'Tüm aşamalar':(custStatusFilter.length===1?custStatusFilter[0]:custStatusFilter.length+' aşama seçili')}</span>
+        <span style="font-size:9px;color:var(--text3)">▼</span>
+      </button>
+      <div id="stage-filter-panel" style="display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:50;background:#fff;border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.14);padding:10px;min-width:250px;max-height:360px;overflow-y:auto">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--border)">
+          <span style="font-size:11px;font-weight:700;color:var(--text2)">AŞAMA SEÇ (birden fazla)</span>
+          <button type="button" class="btn btn-ghost btn-sm" style="font-size:10px;padding:2px 8px" onclick="clearCustStatusFilter()">Temizle</button>
+        </div>
+        ${STAGE_GROUPS.map(g=>`
+          <div style="margin-bottom:8px">
+            <div style="font-size:10px;font-weight:700;color:var(--text3);margin-bottom:4px">${g.label}</div>
+            ${g.options.map(o=>`
+              <label style="display:flex;align-items:center;gap:6px;padding:3px 5px;font-size:12px;cursor:pointer;border-radius:5px" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
+                <input type="checkbox" value="${o}" ${custStatusFilter.includes(o)?'checked':''} onchange="toggleCustStatus('${o}',this.checked)">
+                <span>${o}</span>
+              </label>
+            `).join('')}
+          </div>
+        `).join('')}
+      </div>
+    </div>
     <select class="sel" onchange="fCo(this.value)">
-      <option value="">Tüm ülkeler</option><option>🇩🇪 Almanya</option><option>🇬🇧 İngiltere</option><option>🇫🇷 Fransa</option><option>🇮🇹 İtalya</option><option>🇪🇸 İspanya</option><option>🇳🇱 Hollanda</option><option>🇧🇪 Belçika</option><option>🇦🇹 Avusturya</option><option>🇨🇭 İsviçre</option><option>🇵🇹 Portekiz</option><option>🇬🇷 Yunanistan</option><option>🇸🇪 İsveç</option><option>🇳🇴 Norveç</option><option>🇩🇰 Danimarka</option><option>🇵🇱 Polonya</option><option>🇨🇿 Çekya</option><option>🇭🇺 Macaristan</option><option>🇮🇪 İrlanda</option><option>🇫🇮 Finlandiya</option><option>🇷🇴 Romanya</option><option>🇧🇬 Bulgaristan</option><option>🇸🇰 Slovakya</option><option>🇨🇳 Çin</option><option>🇺🇸 Amerika</option>
+      <option value="">Tüm ülkeler</option><option ${custCountryFilter==='🇩🇪 Almanya'?'selected':''}>🇩🇪 Almanya</option><option ${custCountryFilter==='🇬🇧 İngiltere'?'selected':''}>🇬🇧 İngiltere</option><option ${custCountryFilter==='🇫🇷 Fransa'?'selected':''}>🇫🇷 Fransa</option><option ${custCountryFilter==='🇮🇹 İtalya'?'selected':''}>🇮🇹 İtalya</option><option ${custCountryFilter==='🇪🇸 İspanya'?'selected':''}>🇪🇸 İspanya</option><option ${custCountryFilter==='🇳🇱 Hollanda'?'selected':''}>🇳🇱 Hollanda</option><option ${custCountryFilter==='🇧🇪 Belçika'?'selected':''}>🇧🇪 Belçika</option><option ${custCountryFilter==='🇦🇹 Avusturya'?'selected':''}>🇦🇹 Avusturya</option><option ${custCountryFilter==='🇨🇭 İsviçre'?'selected':''}>🇨🇭 İsviçre</option><option ${custCountryFilter==='🇵🇹 Portekiz'?'selected':''}>🇵🇹 Portekiz</option><option ${custCountryFilter==='🇬🇷 Yunanistan'?'selected':''}>🇬🇷 Yunanistan</option><option ${custCountryFilter==='🇸🇪 İsveç'?'selected':''}>🇸🇪 İsveç</option><option ${custCountryFilter==='🇳🇴 Norveç'?'selected':''}>🇳🇴 Norveç</option><option ${custCountryFilter==='🇩🇰 Danimarka'?'selected':''}>🇩🇰 Danimarka</option><option ${custCountryFilter==='🇵🇱 Polonya'?'selected':''}>🇵🇱 Polonya</option><option ${custCountryFilter==='🇨🇿 Çekya'?'selected':''}>🇨🇿 Çekya</option><option ${custCountryFilter==='🇭🇺 Macaristan'?'selected':''}>🇭🇺 Macaristan</option><option ${custCountryFilter==='🇮🇪 İrlanda'?'selected':''}>🇮🇪 İrlanda</option><option ${custCountryFilter==='🇫🇮 Finlandiya'?'selected':''}>🇫🇮 Finlandiya</option><option ${custCountryFilter==='🇷🇴 Romanya'?'selected':''}>🇷🇴 Romanya</option><option ${custCountryFilter==='🇧🇬 Bulgaristan'?'selected':''}>🇧🇬 Bulgaristan</option><option ${custCountryFilter==='🇸🇰 Slovakya'?'selected':''}>🇸🇰 Slovakya</option><option ${custCountryFilter==='🇨🇳 Çin'?'selected':''}>🇨🇳 Çin</option><option ${custCountryFilter==='🇺🇸 Amerika'?'selected':''}>🇺🇸 Amerika</option>
     </select>
     ${hasColFilter?`<button class="btn btn-ghost btn-sm" onclick="resetTableFilters()">✕ Kolon filtrelerini temizle</button>`:''}
   </div>
@@ -2020,9 +2090,8 @@ function renderRows(){
   }).join('');
 }
 
-function fC(q){const sq=q.toLowerCase();filtered=customers.filter(c=>!CONSULATE_WAIT_S.includes(c.status)&&(CU.role==='management'||c.status!=='İlgilenmiyor')&&(c.name.toLowerCase().includes(sq)||c.id.toLowerCase().includes(sq)||c.phone.includes(sq)));renderRows();}
-function fS(s){filtered=customers.filter(c=>!CONSULATE_WAIT_S.includes(c.status)&&(CU.role==='management'||c.status!=='İlgilenmiyor')&&(!s||c.status===s));renderRows();}
-function fCo(s){filtered=customers.filter(c=>!CONSULATE_WAIT_S.includes(c.status)&&(CU.role==='management'||c.status!=='İlgilenmiyor')&&(!s||c.country===s));renderRows();}
+// fC, fCo ve aşama filtreleri artık dosyanın üst kısmında computeCustFiltered/applyCustFilters ile birleşik çalışıyor
+
 
 // PIPELINE
 const KSTAGES=['Yeni Kayıt','Sonra Ara','Ulaşılamıyor','İlgileniyor','İletişime Geçildi','Ödeme Alındı','Belge Bekleniyor','Belgeler Tamam','Randevu Aranıyor','Randevu Alındı','Randevu Evrakları Hazırlanıyor','Randevu Evrakları Tamamlandı','Başvuru Yapıldı','Sonuç Bekleniyor','Tamamlandı'];
