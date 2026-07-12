@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Başvuru Takip — Yedi Kıtada Vizem</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#F0F4FF;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px}
+    .card{background:#fff;border-radius:20px;box-shadow:0 8px 40px rgba(0,0,0,0.10);width:100%;max-width:480px;overflow:hidden}
+    .header{background:linear-gradient(135deg,#1E40AF,#3B82F6);padding:28px 24px;color:#fff;text-align:center}
+    .header img{width:56px;height:56px;border-radius:12px;margin-bottom:12px;object-fit:cover}
+    .header h1{font-size:20px;font-weight:700;margin-bottom:4px}
+    .header p{font-size:13px;opacity:0.85}
+    .body{padding:24px}
+    .loading{text-align:center;padding:40px;color:#6B7280}
+    .spinner{width:36px;height:36px;border:3px solid #E5E7EB;border-top-color:#3B82F6;border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto 16px}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .error{text-align:center;padding:32px;color:#DC2626}
+    .error-icon{font-size:40px;margin-bottom:12px}
+    .section{margin-bottom:20px}
+    .file-no{font-size:11px;color:#9CA3AF;font-weight:500;letter-spacing:0.5px;margin-bottom:4px}
+    .customer-name{font-size:22px;font-weight:700;color:#111827;margin-bottom:4px}
+    .visa-info{font-size:13px;color:#6B7280;margin-bottom:20px}
+    .status-label{font-size:11px;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px}
+    .steps{display:flex;flex-direction:column;gap:0}
+    .step{display:flex;align-items:flex-start;gap:12px;padding:10px 0;position:relative}
+    .step:not(:last-child)::after{content:'';position:absolute;left:16px;top:40px;width:2px;height:calc(100% - 20px);background:#E5E7EB}
+    .step.done::after{background:#22C55E}
+    .step.active::after{background:#E5E7EB}
+    .step-icon{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;z-index:1}
+    .step.done .step-icon{background:#DCFCE7;color:#22C55E}
+    .step.active .step-icon{background:#EFF6FF;color:#3B82F6;box-shadow:0 0 0 3px #BFDBFE}
+    .step.pending .step-icon{background:#F3F4F6;color:#D1D5DB}
+    .step-text{padding-top:5px}
+    .step-name{font-size:14px;font-weight:600;color:#374151}
+    .step.pending .step-name{color:#9CA3AF}
+    .step-sub{font-size:12px;color:#6B7280;margin-top:2px}
+    .appt-box{background:#EFF6FF;border:1px solid #BFDBFE;border-radius:12px;padding:16px;margin-top:4px}
+    .appt-box p{font-size:13px;color:#1E40AF;font-weight:600;margin-bottom:4px}
+    .appt-box span{font-size:12px;color:#6B7280}
+    .contact-box{background:#F9FAFB;border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin-top:4px}
+    .contact-box p{font-size:13px;color:#374151;margin-bottom:2px}
+    .contact-box a{color:#3B82F6;text-decoration:none;font-size:13px}
+    .update-time{font-size:11px;color:#9CA3AF;text-align:center;margin-top:16px}
+    .btn-refresh{display:block;width:100%;padding:12px;background:#3B82F6;color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;margin-top:16px;transition:background 0.2s}
+    .btn-refresh:hover{background:#2563EB}
+    .footer{text-align:center;font-size:11px;color:#9CA3AF;margin-top:20px;padding-bottom:8px}
+  </style>
+</head>
+<body>
+
+<div class="card">
+  <div class="header">
+    <div style="font-size:32px;margin-bottom:8px">🌍</div>
+    <h1>Yedi Kıtada Vizem</h1>
+    <p>Başvuru Takip Portalı</p>
+  </div>
+  <div class="body" id="content">
+    <div class="loading">
+      <div class="spinner"></div>
+      <p>Başvurunuz yükleniyor...</p>
+    </div>
+  </div>
+</div>
+
+<div class="footer">© 2026 Yedi Kıtada Vizem · Güvenli Portal</div>
+
+<script>
+const EDGE_URL = 'https://huhijoftpgizixwtjwpk.supabase.co/functions/v1/bright-handler';
+
+// Status → step mapping
+const STEPS = [
+  {key:'kayit',    label:'Kayıt ve Ödeme',           statuses:['Yeni Kayıt','Sonra Ara','Ulaşılamıyor','İlgileniyor','İletişime Geçildi','Ödeme Alındı']},
+  {key:'evrak',    label:'Evrak Hazırlığı',           statuses:['Belge Bekleniyor','Belgeler Tamam']},
+  {key:'randevu',  label:'Randevu',                   statuses:['Randevu Aranıyor','Randevu Alındı','Randevu Evrakları Hazırlanıyor','Randevu Evrakları Tamamlandı']},
+  {key:'basvuru',  label:'Konsolosluk Başvurusu',     statuses:['Başvuru Yapıldı','Sonuç Bekleniyor']},
+  {key:'sonuc',    label:'Sonuç',                     statuses:['Tamamlandı','İptal']},
+];
+
+function getStepState(stepStatuses, currentStatus) {
+  const stepIdx = STEPS.findIndex(s => s.statuses.includes(currentStatus));
+  const thisIdx = STEPS.findIndex(s => s.statuses === stepStatuses || s.statuses.every((v,i)=>v===stepStatuses[i]));
+  if (thisIdx < stepIdx) return 'done';
+  if (thisIdx === stepIdx) return 'active';
+  return 'pending';
+}
+
+function fmtDate(d) {
+  if (!d) return '';
+  const dt = new Date(d);
+  const months = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+  return dt.getDate() + ' ' + months[dt.getMonth()] + ' ' + dt.getFullYear();
+}
+
+function fmtDT(d) {
+  if (!d) return '';
+  const dt = new Date(d);
+  return fmtDate(d) + ' ' + dt.getHours().toString().padStart(2,'0') + ':' + dt.getMinutes().toString().padStart(2,'0');
+}
+
+function stepIcon(state) {
+  if (state === 'done')   return '✓';
+  if (state === 'active') return '●';
+  return '○';
+}
+
+function render(data) {
+  const status = data.status;
+  const stepIdx = STEPS.findIndex(s => s.statuses.includes(status));
+
+  const stepsHTML = STEPS.map((step, i) => {
+    const state = i < stepIdx ? 'done' : i === stepIdx ? 'active' : 'pending';
+    let sub = '';
+    // Randevu bilgisi aktif randevu adımındaysa göster
+    if (state === 'active' && step.key === 'randevu' && data.apptDate) {
+      sub = `<div class="appt-box">
+        <p>📅 ${fmtDate(data.apptDate)}${data.apptTime ? ' · ⏰ ' + data.apptTime : ''}</p>
+        ${data.apptCenter ? '<span>📍 ' + data.apptCenter + '</span>' : ''}
+      </div>`;
+    }
+    if (state === 'active') {
+      sub = '<span style="font-size:12px;color:#3B82F6;font-weight:500">← Şu an burada</span>' + sub;
+    }
+    return `<div class="step ${state}">
+      <div class="step-icon">${stepIcon(state)}</div>
+      <div class="step-text">
+        <div class="step-name">${step.label}</div>
+        ${sub}
+      </div>
+    </div>`;
+  }).join('');
+
+  const contactHTML = `<div class="contact-box">
+    <p>📞 Sorularınız için:</p>
+    <a href="mailto:${data.contact}">${data.contact}</a>
+    ${data.salesRep ? '<br><span style="font-size:12px;color:#6B7280;margin-top:4px;display:block">Sorumlu: ' + data.salesRep + '</span>' : ''}
+  </div>`;
+
+  document.getElementById('content').innerHTML = `
+    <div class="section">
+      <div class="file-no">${data.fileNumber}</div>
+      <div class="customer-name">${data.name}</div>
+      <div class="visa-info">🌍 ${data.country || '—'}${data.visaType ? ' · ' + data.visaType : ''}</div>
+    </div>
+    <div class="section">
+      <div class="status-label">Başvuru Durumu</div>
+      <div class="steps">${stepsHTML}</div>
+    </div>
+    <div class="section">
+      <div class="status-label">İletişim</div>
+      ${contactHTML}
+    </div>
+    <div class="update-time">Son güncelleme: ${fmtDT(data.lastUpdate)}</div>
+    <button class="btn-refresh" onclick="loadStatus()">↺ Yenile</button>
+  `;
+}
+
+function showError(msg) {
+  document.getElementById('content').innerHTML = `
+    <div class="error">
+      <div class="error-icon">😔</div>
+      <p style="font-weight:700;margin-bottom:8px">Başvuru bulunamadı</p>
+      <p style="font-size:13px;color:#6B7280">${msg}</p>
+      <p style="font-size:12px;color:#9CA3AF;margin-top:16px">Sorun yaşıyorsanız danışmanınızla iletişime geçin.</p>
+    </div>
+  `;
+}
+
+async function loadStatus() {
+  const params = new URLSearchParams(window.location.search);
+  const token = params.get('t');
+
+  if (!token) {
+    showError('Geçersiz link. Lütfen size gönderilen bağlantıyı kullanın.');
+    return;
+  }
+
+  document.getElementById('content').innerHTML = `
+    <div class="loading"><div class="spinner"></div><p>Yükleniyor...</p></div>
+  `;
+
+  try {
+    const res = await fetch(EDGE_URL, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({action:'getCustomerStatus', portalToken: token})
+    });
+    const d = await res.json();
+    if (d.error) {
+      showError(d.error);
+    } else {
+      render(d);
+    }
+  } catch(e) {
+    showError('Bağlantı hatası. Lütfen tekrar deneyin.');
+  }
+}
+
+loadStatus();
+</script>
+</body>
+</html>
