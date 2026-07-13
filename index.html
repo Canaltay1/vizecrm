@@ -3207,6 +3207,26 @@ async function changeRole(un,newRole){
     toast('Bağlantı hatası','red');
   }
 }
+async function sendPortalBulkEmails(){
+  try{
+    // 1. Adım: önce kaç kişiye gideceğini sor (mail atmadan)
+    const previewRes = await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'sendPortalUpdateBulk',dryRun:true,token:CU.token})});
+    const previewData = await previewRes.json();
+    if(!previewData.success){toast('Hata: '+(previewData.error?.message||previewData.error||'Sayım alınamadı'),'red');return;}
+    const count = previewData.count||0;
+    if(count===0){toast('Şu an "Ödeme Alındı" durumunda ve mail adresi olan müşteri bulunamadı','amber');return;}
+    const confirmed = confirm('"Ödeme Alındı" durumunda ve mail adresi olan '+count+' müşteriye portal linkini içeren bilgilendirme maili gönderilecek.\n\nDevam etmek istiyor musunuz?');
+    if(!confirmed)return;
+
+    // 2. Adım: gerçekten gönder
+    toast('Mailler gönderiliyor, lütfen bekleyin...','blue');
+    const sendRes = await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'sendPortalUpdateBulk',dryRun:false,token:CU.token})});
+    const sendData = await sendRes.json();
+    if(!sendData.success){toast('Hata: '+(sendData.error?.message||sendData.error||'Gönderilemedi'),'red');return;}
+    toast('✓ '+sendData.sent+' mail gönderildi'+(sendData.failed>0?' ('+sendData.failed+' başarısız)':''),'green');
+  }catch(e){toast('Bağlantı hatası','red');}
+}
+
 async function renderUsers(){
   // Kullanıcıları Edge Function'dan çek
   const res = await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'getUsers',token:CU.token})});
@@ -3219,7 +3239,10 @@ async function renderUsers(){
   document.getElementById('main-content').innerHTML=`
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
     <div style="font-size:12px;color:var(--text2)">${allUsers.length} kullanıcı · ${mgrs.length} yönetici · ${rest.filter(u=>u.role==='sales').length} satış · ${rest.filter(u=>u.role==='evrak').length} evrak · ${rest.filter(u=>u.role==='randevu').length} randevu</div>
-    <button class="btn btn-primary btn-sm" onclick="openAddUserForm()">+ Kullanıcı Ekle</button>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-ghost btn-sm" onclick="sendPortalBulkEmails()">📧 Portal Bilgilendirme Maili Gönder</button>
+      <button class="btn btn-primary btn-sm" onclick="openAddUserForm()">+ Kullanıcı Ekle</button>
+    </div>
   </div>
   <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px">Yöneticiler</div>
   <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:20px">
