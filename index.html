@@ -584,7 +584,7 @@ const USERS=[];
 let CU=null;
 
 const STAGES=['Yeni Kayıt','Sonra Ara','Ulaşılamıyor','İlgileniyor','İlgilenmiyor','İletişime Geçildi','Ödeme Alındı','Belge Bekleniyor','Belgeler Tamam','Randevu Aranıyor','Randevu Alındı','Randevu Evrakları Hazırlanıyor','Randevu Evrakları Tamamlandı','Başvuru Yapıldı','Sonuç Bekleniyor','Tamamlandı','İptal'];
-// ⚠️ SENKRONİZASYON UYARISI: Bu dosyadaki durum (status) listeleri (SCLS, PRESALE_STAGES,
+// SENKRONİZASYON UYARISI: Bu dosyadaki durum (status) listeleri (SCLS, PRESALE_STAGES,
 // WARN_EVRAK_S, WARN_RANDEVU_S, CONSULATE_WAIT_S, KSTAGES, KCOLS) bright-handler-v14.ts (backend,
 // SALES_STAGES/EVRAK_STAGES/RANDEVU_STAGES) ve portal.html (STEPS) ile elle senkron tutuluyor.
 // Yeni bir durum eklerken/çıkarırken/adını değiştirirken HER ÜÇ dosyayı da güncelleyin.
@@ -2437,10 +2437,12 @@ function getMuhData(period) {
 
   const giderList = expenses.filter(e => inMuhPeriod(e.date, period));
   const totalGider = giderList.reduce((s,e)=>s+(e.amount||0), 0);
-  // Müşteri bazlı giderler: müşterinin ödeme tarihi aya göre dönemle eşleştir
+  // Müşteri bazlı giderler: artık giderin GERÇEK tarihine göre döneme eşleştiriliyor
+  // (eski kayıtlarda expense_date yoksa müşterinin ödeme tarihine düşülür — geriye dönük uyumluluk)
   const custExpList = allCustExpenses.filter(function(e){
     const c = customers.find(function(x){return x.id===e.customer_file_number;});
-    return c && inMuhPeriod(c.paymentDate||c.created, period);
+    const d = e.expense_date || (c ? (c.paymentDate||c.created) : '');
+    return inMuhPeriod(d, period);
   });
   const totalCustExp = custExpList.reduce((s,e)=>s+Number(e.amount||0), 0);
   const totalIade = customers.filter(c=>c.refundStatus==='Gerçekleşti').reduce((s,c)=>s+(c.refundAmount||0),0);
@@ -2488,10 +2490,10 @@ function getMonthlyBreakdown() {
     monthMap[k].expense += e.amount||0;
   });
 
-  // Müşteri bazlı gider — müşterinin ödeme ayına yaz
+  // Müşteri bazlı gider — artık giderin GERÇEK tarihine göre ilgili aya yazılır
   allCustExpenses.forEach(function(e) {
     const c = customers.find(function(x){ return x.id===e.customer_file_number; });
-    const k = getMuhMonthKey(c ? (c.paymentDate||c.created) : '');
+    const k = getMuhMonthKey(e.expense_date || (c ? (c.paymentDate||c.created) : ''));
     if (!k) return;
     if (!monthMap[k]) monthMap[k] = {income:0,expense:0,count:0,refund:0};
     monthMap[k].expense += Number(e.amount||0);
@@ -2740,7 +2742,8 @@ function showMuhMonthDetail(monthKey) {
   var giderMonth = expenses.filter(function(e){ return (e.date||'').slice(0,7)===monthKey; });
   var custExpMonth = allCustExpenses.filter(function(e){
     var c=customers.find(function(x){return x.id===e.customer_file_number;});
-    return c && (c.paymentDate||c.created||'').slice(0,7)===monthKey;
+    var d = e.expense_date || (c ? (c.paymentDate||c.created) : '');
+    return (d||'').slice(0,7)===monthKey;
   });
   var totalInc=items.reduce(function(s,p){return s+p.amount;},0);
   var totalExp=giderMonth.reduce(function(s,e){return s+(e.amount||0);},0);
@@ -2919,7 +2922,8 @@ function exportMuhTamRapor() {
   const cgH = ['Dosya No','Müşteri','Tutar','Açıklama','Kaydeden','Tarih'];
   const cgR = custExpList.map(function(e){
     const c=customers.find(function(x){return x.id===e.customer_file_number;});
-    return [e.customer_file_number,c?c.name:'—',Number(e.amount),e.description||'',e.created_by||'',e.created_at?e.created_at.slice(0,10):''];
+    const expDate = e.expense_date || (e.created_at?e.created_at.slice(0,10):'');
+    return [e.customer_file_number,c?c.name:'—',Number(e.amount),e.description||'',e.created_by||'',expDate];
   });
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([cgH,...cgR]), 'Musteri-Giderleri');
 
@@ -2990,15 +2994,19 @@ function renderCustExpPanel(custId, exps, readOnly) {
   var list = exps.length===0
     ? '<div style="font-size:11px;color:var(--text3);padding:4px 0">Henüz gider kaydı yok</div>'
     : exps.map(function(e){
+        var expDate = e.expense_date || (e.created_at||'').slice(0,10); // eski kayıtlarda expense_date yoksa kayıt tarihine düş
         return '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:var(--surface2);border-radius:6px;margin-bottom:4px;font-size:12px">'
           +'<div><span style="font-weight:600;color:var(--red)">-'+fmtTL(Number(e.amount))+'</span>'
+          +' <span style="font-size:11px;color:var(--accent);font-weight:600">📅 '+fmtDate(expDate)+'</span>'
           +(e.description?' <span style="color:var(--text2);font-size:11px">'+esc(e.description)+'</span>':'')
-          +'<div style="font-size:10px;color:var(--text3)">'+e.created_by+' · '+fmtDT(e.created_at)+'</div></div>'
+          +'<div style="font-size:10px;color:var(--text3)">ekleyen: '+e.created_by+' · '+fmtDT(e.created_at)+'</div></div>'
           +(!readOnly?'<button class="btn btn-danger btn-sm" style="font-size:10px;padding:2px 6px" onclick="deleteCustExpense(\''+custId+'\',\''+e.id+'\')">Sil</button>':'')
           +'</div>';
       }).join('');
+  var todayStr = new Date().toISOString().slice(0,10);
   var addForm = !readOnly
     ? '<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">'
+        +'<input type="date" id="cexp-date-'+custId+'" class="fi2" value="'+todayStr+'" style="padding:5px 8px;font-size:12px" title="Giderin gerçekte hangi tarihte olduğu">'
         +'<input type="number" id="cexp-amt-'+custId+'" class="fi2" placeholder="Tutar ₺" style="padding:5px 8px;width:90px;font-size:12px" min="1">'
         +'<input type="text" id="cexp-desc-'+custId+'" class="fi2" placeholder="Açıklama (ör: Konsolosluk randevu)" style="padding:5px 8px;flex:1;font-size:12px;min-width:140px">'
         +'<button class="btn btn-danger btn-sm" onclick="addCustExpense(\''+custId+'\')">+ Gider Ekle</button>'
@@ -3013,11 +3021,12 @@ function renderCustExpPanel(custId, exps, readOnly) {
 }
 
 async function addCustExpense(custId) {
+  var expDate = document.getElementById('cexp-date-'+custId)?.value || new Date().toISOString().slice(0,10);
   var amt = parseFloat(document.getElementById('cexp-amt-'+custId)?.value);
   var desc = (document.getElementById('cexp-desc-'+custId)?.value||'').trim();
   if(!amt||amt<=0){toast('Tutar giriniz','red');return;}
   try{
-    var res=await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'addCustomerExpense',customerId:custId,custExpAmount:amt,custExpDesc:desc,token:CU.token})});
+    var res=await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'addCustomerExpense',customerId:custId,custExpAmount:amt,custExpDesc:desc,custExpDate:expDate,token:CU.token})});
     var d=await res.json();
     if(!d.success){toast('Hata: '+(d.error?.message||'Eklenemedi'),'red');return;}
     toast('-'+fmtTL(amt)+' gider eklendi','green');
