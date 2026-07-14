@@ -712,7 +712,12 @@ let _dashWarnings = [];
 function setDashWarnings(w){ _dashWarnings = w; }
 
 function showStaleModal() {
-  var all=customers.filter(function(c){return c.days>7&&c.status!=='Tamamlandı'&&c.status!=='İptal'&&c.status!=='İlgilenmiyor';}).sort(function(a,b){return b.days-a.days;});
+  var all=customers.filter(function(c){
+    var si=getStaleWait(c);
+    if(!si||si.wait<=7) return false;
+    c._staleWait=si.wait; c._staleBasis=si.basis;
+    return true;
+  }).sort(function(a,b){return b._staleWait-a._staleWait;});
   var reps=[...new Set(all.map(function(c){return c.rep;}).filter(Boolean))].sort();
   var stages=[...new Set(all.map(function(c){return c.status;}).filter(Boolean))].sort();
   var m=document.createElement('div');
@@ -721,7 +726,8 @@ function showStaleModal() {
   function buildRows(list){
     if(!list.length) return '<tr><td colspan=7 style="text-align:center;padding:24px;color:var(--text3)">Kayıt yok</td></tr>';
     return list.map(function(c){
-      var dc=c.days>21?'var(--red)':c.days>14?'var(--amber)':'var(--text2)';
+      var w=c._staleWait!=null?c._staleWait:c.days;
+      var dc=w>21?'var(--red)':w>14?'var(--amber)':'var(--text2)';
       return '<tr class="sm-row" data-id="'+c.id+'" style="cursor:pointer;border-bottom:1px solid var(--border)">'
         +'<td style="padding:8px 12px;font-weight:700;font-size:12px">'+esc(c.name)+'</td>'
         +'<td style="padding:8px 12px;font-size:11px"><a class="phone-link" href="tel:'+c.phone+'" onclick="event.stopPropagation()">'+c.phone+'</a></td>'
@@ -729,7 +735,7 @@ function showStaleModal() {
         +'<td style="padding:8px 12px"><span class="badge '+(SCLS[c.status]||'b-lead')+'" style="font-size:10px">'+c.status+'</span></td>'
         +'<td style="padding:8px 12px;font-size:11px;color:var(--text2)">'+(c.rep||'—')+'</td>'
         +'<td style="padding:8px 12px;font-size:11px;color:var(--text2)">'+(c.lastMod||'—')+'</td>'
-        +'<td style="padding:8px 12px;font-weight:700;color:'+dc+'">'+c.days+' gün</td>'
+        +'<td style="padding:8px 12px;font-weight:700;color:'+dc+'">'+w+' gün<div style="font-size:9px;font-weight:400;color:var(--text3)">'+(c._staleBasis||'')+'</div></td>'
         +'</tr>';
     }).join('');
   }
@@ -740,7 +746,7 @@ function showStaleModal() {
     var f=all.filter(function(c){
       if(repF&&c.rep!==repF)return false;
       if(stageF&&c.status!==stageF)return false;
-      if(dayF&&c.days<dayF)return false;
+      if(dayF&&(c._staleWait!=null?c._staleWait:c.days)<dayF)return false;
       return true;
     });
     document.getElementById('sm-tbody').innerHTML=buildRows(f);
@@ -1609,15 +1615,30 @@ const FUNNEL_COLORS=['#6B7280','#2563EB','#7C3AED','#D97706','#059669'];
 const WARN_SALES_S=['Yeni Kayıt','Sonra Ara','Ulaşılamıyor','İlgileniyor','İletişime Geçildi'];
 const WARN_EVRAK_S=['Ödeme Alındı','Belge Bekleniyor','Belgeler Tamam','Randevu Aranıyor','Randevu Alındı','Randevu Evrakları Hazırlanıyor'];
 const WARN_RANDEVU_S=['Randevu Evrakları Tamamlandı'];
+// Ödeme alınmış ama randevusu HENÜZ ALINMAMIŞ aşamalar — bunların bekleme saati ödeme tarihinden işler
+const PRE_APPT_S=['Ödeme Alındı','Belge Bekleniyor','Belgeler Tamam','Randevu Aranıyor'];
+
+// Bir müşterinin "bekleme" süresini, aşamasına uygun saate göre hesaplar:
+//  - Randevu bekleyenler (PRE_APPT_S): ödeme tarihinden itibaren (dosyaya dokunmak sıfırlamaz)
+//  - Diğer süreç içi aşamalar: son güncellemeden itibaren
+//  - Tamamlandı/İptal/İlgilenmiyor ve konsoloslukta bekleyenler: null (bu listelerde takip edilmez,
+//    konsolosluktakilerin kendi sayfası ve başvuru-tarihli sayacı var)
+function getStaleWait(c){
+  if(c.status==='Tamamlandı'||c.status==='İptal'||c.status==='İlgilenmiyor') return null;
+  if(CONSULATE_WAIT_S.includes(c.status)) return null;
+  if(PRE_APPT_S.includes(c.status)){
+    const baseDate=c.paymentDate||c.registrationDate||c.created;
+    const w=baseDate?Math.max(0,Math.floor((Date.now()-new Date(baseDate))/86400000)):c.days;
+    return {wait:w,basis:'ödemeden beri'};
+  }
+  return {wait:c.days,basis:'son güncellemeden beri'};
+}
 const POST_SALES_STAGES=['Ödeme Alındı','Belge Bekleniyor','Belgeler Tamam','Randevu Aranıyor','Randevu Alındı','Randevu Evrakları Hazırlanıyor','Randevu Evrakları Tamamlandı','Başvuru Yapıldı','Sonuç Bekleniyor','Tamamlandı','İptal'];
 const CONSULATE_WAIT_S=['Başvuru Yapıldı','Sonuç Bekleniyor'];
 
 function buildWarningsHTML(){
   const warnings=[];
-  // Ödeme alınmış ama henüz randevusu ALINMAMIŞ aşamalar — bu müşteriler için sayaç
-  // "son dokunuş" değil, ÖDEME TARİHİ üzerinden işler. Dosyaya not/arama eklenmesi sayacı
-  // sıfırlamaz; randevu alınana kadar uyarı ekranında kalırlar.
-  const PRE_APPT_S=['Ödeme Alındı','Belge Bekleniyor','Belgeler Tamam','Randevu Aranıyor'];
+  // Randevu bekleyenlerin sayacı ödeme tarihinden işler (global PRE_APPT_S ve getStaleWait ile aynı felsefe)
   const today=new Date();
   for(const c of customers){
     if(c.status==='Tamamlandı'||c.status==='İptal'||c.status==='İlgilenmiyor') continue;
@@ -1751,7 +1772,12 @@ function renderDashBody(){
   );
   const pendingTotal=pendingList.reduce((s,c)=>s+((c.fee||0)-(c.prepay||0)),0);
   const cancelledCount=all.filter(c=>c.status==='İptal').length;
-  const staleList=all.filter(c=>c.days>7&&c.status!=='Tamamlandı'&&c.status!=='İptal');
+  const staleList=all.filter(c=>{
+    const si=getStaleWait(c);
+    if(!si||si.wait<=7) return false;
+    c._staleWait=si.wait; c._staleBasis=si.basis;
+    return true;
+  });
   const consulateList=all.filter(c=>CONSULATE_WAIT_S.includes(c.status)).sort((a,b)=>b.days-a.days);
   const approvedList=customers.filter(c=>c.visaResult==='Onaylandı');
   const cycle=avgSalesCycleDays(all);
