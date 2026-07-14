@@ -642,6 +642,10 @@ async function loadCustomers(){
       tc:r.tc_kimlik||'',
       lastModBy:r.last_modified_by||'',
       paymentDate:r.payment_date||'',
+      appliedAt:r.applied_at||null,
+      // Başvuru yapıldığından beri geçen gün — dosyaya dokunulsa da sıfırlanmaz.
+      // applied_at yoksa (eski kayıt / history eksik) son güncelleme gününe düşer.
+      consulateDays:r.applied_at?Math.max(0,Math.floor((Date.now()-new Date(r.applied_at).getTime())/86400000)):(r.last_modified_at?Math.max(0,Math.floor((Date.now()-new Date(r.last_modified_at).getTime())/86400000)):0),
       refundStatus:r.refund_status||'',refundAmount:r.refund_amount||0,refundReason:r.refund_reason||'',refundDate:r.refund_date||'',
       refundRequestedBy:r.refund_requested_by||'',refundRequestedAt:r.refund_requested_at||null,
       callTotal:r.call_total||0,callReached:r.call_reached||0,reminderDate:r.call_reminder_date||'',appTotal:r.app_total||0,appPending:r.app_pending||0,appPendingNoDate:r.app_pending_no_date||0,appPendingData:JSON.parse(r.app_pending_data||'[]'),visaResult:r.visa_result||'',visaStartDate:r.visa_start_date||'',visaEndDate:r.visa_end_date||''
@@ -708,7 +712,7 @@ let _dashWarnings = [];
 function setDashWarnings(w){ _dashWarnings = w; }
 
 function showStaleModal() {
-  var all=customers.filter(function(c){return c.days>7&&c.status!=='Tamamlandı'&&c.status!=='İptal';}).sort(function(a,b){return b.days-a.days;});
+  var all=customers.filter(function(c){return c.days>7&&c.status!=='Tamamlandı'&&c.status!=='İptal'&&c.status!=='İlgilenmiyor';}).sort(function(a,b){return b.days-a.days;});
   var reps=[...new Set(all.map(function(c){return c.rep;}).filter(Boolean))].sort();
   var stages=[...new Set(all.map(function(c){return c.status;}).filter(Boolean))].sort();
   var m=document.createElement('div');
@@ -1432,7 +1436,7 @@ function exportAllCustomersExcel(){
 
 function showConsulateDetail(){
   const all=getDashFiltered();
-  const list=all.filter(c=>CONSULATE_WAIT_S.includes(c.status)).sort((a,b)=>b.days-a.days);
+  const list=all.filter(c=>CONSULATE_WAIT_S.includes(c.status)).sort((a,b)=>(b.consulateDays??b.days)-(a.consulateDays??a.days));
   const modal=document.createElement('div');
   modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
   modal.onclick=e=>{if(e.target===modal)modal.remove();};
@@ -1463,7 +1467,7 @@ function showConsulateDetail(){
           </thead>
           <tbody>
             ${list.map(c=>{
-              const rc=rowColor(c.days);
+              const rc=rowColor(c.consulateDays??c.days);
               return `<tr onclick="this.closest('div[style*=fixed]').remove();openPanel('${c.id}')" style="cursor:pointer;border-bottom:1px solid var(--border);background:${rc.bg}" onmouseover="this.style.opacity=0.8" onmouseout="this.style.opacity=1">
                 <td style="padding:10px 16px;font-weight:600;color:var(--text)">${c.name}</td>
                 <td style="padding:10px 16px;color:var(--text2)">${c.country||'—'}</td>
@@ -1610,21 +1614,33 @@ const CONSULATE_WAIT_S=['Başvuru Yapıldı','Sonuç Bekleniyor'];
 
 function buildWarningsHTML(){
   const warnings=[];
+  // Ödeme alınmış ama henüz randevusu ALINMAMIŞ aşamalar — bu müşteriler için sayaç
+  // "son dokunuş" değil, ÖDEME TARİHİ üzerinden işler. Dosyaya not/arama eklenmesi sayacı
+  // sıfırlamaz; randevu alınana kadar uyarı ekranında kalırlar.
+  const PRE_APPT_S=['Ödeme Alındı','Belge Bekleniyor','Belgeler Tamam','Randevu Aranıyor'];
+  const today=new Date();
   for(const c of customers){
-    if(c.status==='Tamamlandı'||c.status==='İptal') continue;
+    if(c.status==='Tamamlandı'||c.status==='İptal'||c.status==='İlgilenmiyor') continue;
     const d=c.days;
     if(WARN_SALES_S.includes(c.status)){
       if(d>=3) warnings.push({level:'crit',c,msg:`${d} gündür güncellenmedi`,dept:'Satış',icon:'🔴'});
       else if(d>=2) warnings.push({level:'warn',c,msg:`${d} gündür güncellenmedi`,dept:'Satış',icon:'⚠️'});
-    } else if(WARN_EVRAK_S.includes(c.status)){
-      if(c.status==='Randevu Aranıyor'&&d>=14) warnings.push({level:'crit',c,msg:`${d} gündür randevu alınamıyor`,dept:'Evrak',icon:'🔴'});
-      else if(d>=14) warnings.push({level:'crit',c,msg:`${d} gündür güncellenmedi`,dept:'Evrak',icon:'🔴'});
+    } else if(PRE_APPT_S.includes(c.status)){
+      // Ödemeden bu yana geçen gün (ödeme tarihi yoksa kayıt tarihine düşer)
+      const baseDate=c.paymentDate||c.registrationDate||c.created;
+      const w=baseDate?Math.max(0,Math.floor((today-new Date(baseDate))/86400000)):d;
+      if(w>=14) warnings.push({level:'crit',c,msg:`Ödemeden bu yana ${w} gün geçti — hâlâ randevu alınmadı`,dept:'Randevu Bekliyor',icon:'🔴'});
+      else if(w>=7) warnings.push({level:'warn',c,msg:`Ödemeden bu yana ${w} gün geçti — hâlâ randevu alınmadı`,dept:'Randevu Bekliyor',icon:'⚠️'});
       else if(d>=7) warnings.push({level:'warn',c,msg:`${d} gündür güncellenmedi`,dept:'Evrak',icon:'⚠️'});
-    } else if(WARN_RANDEVU_S.includes(c.status)){
-      if(d>=14) warnings.push({level:'crit',c,msg:`${d} gündür güncellenmedi`,dept:'Randevu',icon:'🔴'});
-      else if(d>=7) warnings.push({level:'warn',c,msg:`${d} gündür güncellenmedi`,dept:'Randevu',icon:'⚠️'});
+    } else if(WARN_EVRAK_S.includes(c.status)||WARN_RANDEVU_S.includes(c.status)){
+      // Randevu alınmış, evrak/başvuru hazırlığındaki aşamalar — son güncellemeye göre
+      if(d>=14) warnings.push({level:'crit',c,msg:`${d} gündür güncellenmedi`,dept:WARN_RANDEVU_S.includes(c.status)?'Randevu':'Evrak',icon:'🔴'});
+      else if(d>=7) warnings.push({level:'warn',c,msg:`${d} gündür güncellenmedi`,dept:WARN_RANDEVU_S.includes(c.status)?'Randevu':'Evrak',icon:'⚠️'});
     } else if(CONSULATE_WAIT_S.includes(c.status)){
-      if(d>=20) warnings.push({level:'warn',c,msg:`${d} gündür konsolosluk sonucu bekleniyor — kontrol et`,dept:'Konsolosluk',icon:'🛂'});
+      // Sayaç BAŞVURU TARİHİNDEN itibaren işler (dosyaya not eklemek sıfırlamaz)
+      const cw=c.consulateDays!=null?c.consulateDays:d;
+      if(cw>=35) warnings.push({level:'crit',c,msg:`Başvurudan bu yana ${cw} gün geçti — konsolosluğu acilen kontrol et`,dept:'Konsolosluk',icon:'🔴'});
+      else if(cw>=20) warnings.push({level:'warn',c,msg:`Başvurudan bu yana ${cw} gün geçti — kontrol et`,dept:'Konsolosluk',icon:'🛂'});
     }
   }
   warnings.sort((a,b)=>{
@@ -2239,14 +2255,14 @@ async function saveVisaResult(id) {
 }
 
 function renderConsulate(){
-  const list=customers.filter(c=>CONSULATE_WAIT_S.includes(c.status)).sort((a,b)=>b.days-a.days);
+  const list=customers.filter(c=>CONSULATE_WAIT_S.includes(c.status)).sort((a,b)=>(b.consulateDays??b.days)-(a.consulateDays??a.days));
   function rowColor(d){
     if(d>=45) return {bg:'var(--red-bg)',fg:'var(--red)',label:'🔴 '+d+' gün'};
     if(d>=30) return {bg:'var(--amber-bg)',fg:'var(--amber)',label:'🟡 '+d+' gün'};
     return {bg:'',fg:'var(--text2)',label:d+' gün'};
   }
   document.getElementById('main-content').innerHTML=`
-  <div style="font-size:12px;color:var(--text2);margin-bottom:14px">Konsolosluğa başvurusu yapılmış, sonuç bekleyen müşteriler. Bu aşamada operasyonel bir işlem gerekmez — sadece takip amaçlıdır. <span style="color:var(--amber);font-weight:600">🟡 30+ gün</span>, <span style="color:var(--red);font-weight:600">🔴 45+ gün</span> bekleyenler işaretlenir.</div>
+  <div style="font-size:12px;color:var(--text2);margin-bottom:14px">Konsolosluğa başvurusu yapılmış, sonuç bekleyen müşteriler. Bekleme süresi <b>başvurunun yapıldığı tarihten</b> itibaren sayılır (dosyaya not eklemek sayacı sıfırlamaz). <span style="color:var(--amber);font-weight:600">🟡 30+ gün</span>, <span style="color:var(--red);font-weight:600">🔴 45+ gün</span> bekleyenler işaretlenir.</div>
   <div class="tbl-wrap">
     <div class="tbl-toolbar">
       <div class="tbl-label">${list.length} Müşteri Sonuç Bekliyor</div>
@@ -2259,7 +2275,7 @@ function renderConsulate(){
       </tr></thead>
       <tbody>
         ${list.map(c=>{
-          const rc=rowColor(c.days);
+          const rc=rowColor(c.consulateDays??c.days);
           const visaBadge = c.visaResult==='Onaylandı'
             ? `<span style="background:var(--green-bg);color:var(--green);font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px">✅ Onaylandı</span>${c.visaStartDate&&c.visaEndDate?`<div style="font-size:10px;color:var(--text2);margin-top:2px">${fmtDate(c.visaStartDate)} → ${fmtDate(c.visaEndDate)}</div>`:''}`
             : c.visaResult==='Reddedildi'
