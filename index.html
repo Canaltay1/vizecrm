@@ -1065,8 +1065,10 @@ async function showPage(p){
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.querySelector('[onclick="showPage(\''+p+'\')"]')?.classList.add('active');
   localStorage.setItem('vizecrm_lastpage',p);
+  // Konsolosluk filtrelerini sayfaya her yeni girişte sıfırla (eski arama takılı kalmasın)
+  consSearch='';consStatus='';consCountry='';consRep='';consDay=0;
   const searchWrap=document.getElementById('tb-search-wrap');
-  if(searchWrap)searchWrap.style.display=(p==='dashboard')?'none':'';
+  if(searchWrap){searchWrap.style.display=(p==='dashboard')?'none':'';const si=searchWrap.querySelector('input');if(si)si.value='';}
   if(p==='dashboard'||p==='customers'||p==='pipeline'||p==='refunds'||p==='consulate'||p==='completed'||p==='cancelled'||p==='notinterested'||p==='muhasebe')await loadCustomers();
   if((p==='dashboard'||p==='muhasebe')&&CU.role==='management') await loadAllPayments();
   await ({dashboard:renderDash,customers:renderCusts,pipeline:renderPipeline,sold:renderSold,consulate:renderConsulate,completed:renderCompleted,cancelled:renderCancelled,notinterested:renderNotInterested,muhasebe:renderMuhasebe,refunds:renderRefunds,users:renderUsers,account:renderAccount})[p]?.();
@@ -1088,6 +1090,10 @@ function gSearch(q){
     renderRows();
   }else if(document.getElementById('kanban')){
     renderPipeline();
+  }else if(document.getElementById('cons-table')){
+    // Konsolosluk Takibi sayfası — üstteki genel arama, sayfanın kendi arama filtresine bağlanır
+    consSearch=q;
+    renderConsulate();
   }
 }
 
@@ -2280,8 +2286,37 @@ async function saveVisaResult(id) {
   } catch(e) { toast('Bağlantı hatası','red'); }
 }
 
+// Konsolosluk sayfası filtre durumu
+let consSearch='';
+let consStatus='';
+let consCountry='';
+let consRep='';
+let consDay=0;
+
+function consFilterChange(field,value){
+  if(field==='search')consSearch=value;
+  else if(field==='status')consStatus=value;
+  else if(field==='country')consCountry=value;
+  else if(field==='rep')consRep=value;
+  else if(field==='day')consDay=parseInt(value)||0;
+  renderConsulate();
+}
+
 function renderConsulate(){
-  const list=customers.filter(c=>CONSULATE_WAIT_S.includes(c.status)).sort((a,b)=>(b.consulateDays??b.days)-(a.consulateDays??a.days));
+  const sq=consSearch.toLowerCase().trim();
+  const baseList=customers.filter(c=>CONSULATE_WAIT_S.includes(c.status));
+  const list=baseList.filter(c=>{
+    if(sq&&!((c.name&&c.name.toLowerCase().includes(sq))||(c.id&&c.id.toLowerCase().includes(sq))||(c.phone&&c.phone.includes(sq))))return false;
+    if(consStatus&&c.status!==consStatus)return false;
+    if(consCountry&&c.country!==consCountry)return false;
+    if(consRep&&c.rep!==consRep&&c.evrakRep!==consRep&&c.randevuRep!==consRep)return false;
+    if(consDay&&(c.consulateDays??c.days)<consDay)return false;
+    return true;
+  }).sort((a,b)=>(b.consulateDays??b.days)-(a.consulateDays??a.days));
+  // Filtre seçenekleri tüm konsolosluk listesinden türetilir (filtrelenmiş listeden değil)
+  const consCountries=[...new Set(baseList.map(c=>c.country).filter(Boolean))].sort();
+  const consReps=[...new Set(baseList.flatMap(c=>[c.rep,c.evrakRep,c.randevuRep]).filter(r=>r&&r!=='—'))].sort();
+  const hasFilter=consSearch||consStatus||consCountry||consRep||consDay;
   function rowColor(d){
     if(d>=45) return {bg:'var(--red-bg)',fg:'var(--red)',label:'🔴 '+d+' gün'};
     if(d>=30) return {bg:'var(--amber-bg)',fg:'var(--amber)',label:'🟡 '+d+' gün'};
@@ -2289,13 +2324,36 @@ function renderConsulate(){
   }
   document.getElementById('main-content').innerHTML=`
   <div style="font-size:12px;color:var(--text2);margin-bottom:14px">Konsolosluğa başvurusu yapılmış, sonuç bekleyen müşteriler. Bekleme süresi <b>başvurunun yapıldığı tarihten</b> itibaren sayılır (dosyaya not eklemek sayacı sıfırlamaz). <span style="color:var(--amber);font-weight:600">🟡 30+ gün</span>, <span style="color:var(--red);font-weight:600">🔴 45+ gün</span> bekleyenler işaretlenir.</div>
+  <div class="filter-bar" style="flex-wrap:wrap;gap:8px">
+    <div class="sw"><input class="si" placeholder="İsim, telefon veya dosya no..." value="${esc(consSearch)}" oninput="consFilterChange('search',this.value)"></div>
+    <select class="sel" onchange="consFilterChange('status',this.value)">
+      <option value="">Tüm aşamalar</option>
+      <option ${consStatus==='Başvuru Yapıldı'?'selected':''}>Başvuru Yapıldı</option>
+      <option ${consStatus==='Sonuç Bekleniyor'?'selected':''}>Sonuç Bekleniyor</option>
+    </select>
+    <select class="sel" onchange="consFilterChange('country',this.value)">
+      <option value="">Tüm ülkeler</option>
+      ${consCountries.map(co=>`<option ${consCountry===co?'selected':''}>${co}</option>`).join('')}
+    </select>
+    <select class="sel" onchange="consFilterChange('rep',this.value)">
+      <option value="">Tüm temsilciler</option>
+      ${consReps.map(r=>`<option ${consRep===r?'selected':''}>${r}</option>`).join('')}
+    </select>
+    <select class="sel" onchange="consFilterChange('day',this.value)">
+      <option value="0">Tüm bekleme süreleri</option>
+      <option value="15" ${consDay===15?'selected':''}>15+ gün</option>
+      <option value="30" ${consDay===30?'selected':''}>🟡 30+ gün</option>
+      <option value="45" ${consDay===45?'selected':''}>🔴 45+ gün</option>
+    </select>
+    ${hasFilter?`<button class="btn btn-ghost btn-sm" onclick="consSearch='';consStatus='';consCountry='';consRep='';consDay=0;renderConsulate()">✕ Filtreleri temizle</button>`:''}
+  </div>
   <div class="tbl-wrap">
     <div class="tbl-toolbar">
-      <div class="tbl-label">${list.length} Müşteri Sonuç Bekliyor</div>
+      <div class="tbl-label">${list.length}${hasFilter?' / '+baseList.length:''} Müşteri Sonuç Bekliyor</div>
       <button class="btn btn-ghost btn-sm" onclick="exportConsulateExcel()">📥 Excel</button>
     </div>
     <div style="overflow-x:auto">
-    <table class="tbl" style="min-width:920px">
+    <table class="tbl" style="min-width:920px" id="cons-table">
       <thead><tr>
         <th>Dosya No</th><th>Ad Soyad</th><th>Telefon</th><th>Ülke</th><th>Aşama</th><th>Süreç Boyunca Sorumlular</th><th>Bekleme Süresi</th>${CU.role==='management'?'<th>Vize Sonucu</th>':''}
       </tr></thead>
@@ -2336,7 +2394,7 @@ function renderConsulate(){
       </tbody>
     </table>
     </div>
-    ${list.length===0?'<div style="padding:40px;text-align:center;color:var(--text3)">Sonuç bekleyen müşteri yok.</div>':''}
+    ${list.length===0?'<div style="padding:40px;text-align:center;color:var(--text3)">'+(hasFilter?'Filtrelere uyan müşteri bulunamadı.':'Sonuç bekleyen müşteri yok.')+'</div>':''}
   </div>`;
 }
 
