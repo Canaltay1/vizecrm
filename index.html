@@ -2495,6 +2495,43 @@ function fmtMonthKey(key) {
 // allPayments doluysa customer_payments tablosundan (her ödeme kendi tarihiyle)
 // allPayments boşsa customers.prepay'den fallback (eski sistem)
 // Dönen format: [{fileNo, name, country, rep, amount, date, fee, prepay}]
+// Muhasebe > Ödeme Detayı'ndan tek bir ödeme kaydının tarihini düzenler.
+// Tarih değişince ödemenin hangi aya sayıldığı da değişir — kullanıcıyı uyarıyoruz.
+function editPaymentDate(payId, mevcutTarih, musteriAdi, tutar){
+  const m=document.createElement('div');
+  m.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px';
+  m.innerHTML=`<div style="background:var(--bg);border-radius:14px;max-width:420px;width:100%;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+    <div style="font-size:16px;font-weight:700;margin-bottom:4px">📅 Ödeme Tarihini Düzenle</div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:16px"><b>${esc(musteriAdi)}</b> · ${fmtTL(tutar)}</div>
+    <label style="font-size:11px;font-weight:600;color:var(--text2);display:block;margin-bottom:5px">Ödeme Tarihi</label>
+    <input type="date" id="epd-date" class="fi2" value="${esc(mevcutTarih)}" style="width:100%;padding:9px;font-size:13px;margin-bottom:14px">
+    <div style="background:var(--amber-bg);border:1px solid var(--amber);border-radius:8px;padding:10px 12px;font-size:11px;color:var(--text2);line-height:1.6;margin-bottom:16px">
+      ⚠️ Tarihi değiştirmek bu ödemenin <b>hangi aya sayıldığını</b> değiştirir. Muhasebe raporlarındaki aylık ciro rakamları buna göre güncellenir.
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-ghost" style="flex:1" onclick="this.closest('div[style*=fixed]').remove()">Vazgeç</button>
+      <button class="btn btn-primary" style="flex:1" onclick="savePaymentDate('${payId}',${tutar})">✓ Kaydet</button>
+    </div>
+  </div>`;
+  document.body.appendChild(m);
+}
+
+async function savePaymentDate(payId, tutar){
+  const yeniTarih=document.getElementById('epd-date')?.value;
+  if(!yeniTarih){toast('Tarih seçiniz','red');return;}
+  try{
+    const res=await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action:'updatePaymentRecord',payId,payAmt:tutar,payDate:yeniTarih,token:CU.token})});
+    const d=await res.json();
+    if(!d.success){toast('Hata: '+(d.error?.message||d.error||'Güncellenemedi'),'red');return;}
+    document.querySelector('div[style*=fixed]')?.remove();
+    toast('✓ Ödeme tarihi güncellendi','green');
+    await loadCustomers();
+    await loadAllPayments();
+    renderMuhasebe();
+  }catch(e){toast('Bağlantı hatası','red');}
+}
+
 function getIncomeItems(period, repFilter, countryFilter) {
   // Hibrit yaklaşım:
   // - customer_payments'ta kaydı olan müşteri → oradan oku (doğru tarihli)
@@ -2811,7 +2848,7 @@ function renderMuhasebePage() {
     <table class="tbl">
       <thead><tr><th>Tarih</th><th>Dosya No</th><th>Müşteri</th><th>Ülke</th><th>Temsilci</th><th style="text-align:right">Bu Ödeme</th><th>Not</th><th></th></tr></thead>
       <tbody>
-        ${items.length===0?'<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--text3)">Bu dönemde ödeme kaydı yok</td></tr>':
+        ${items.length===0?'<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text3)">Bu dönemde ödeme kaydı yok</td></tr>':
           items.sort((a,b)=>(b.date||'').localeCompare(a.date||'')).map(p=>`<tr onclick="openPanel('${p.fileNo}')" style="cursor:pointer" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
               <td style="white-space:nowrap;color:var(--text2)">${p.date?fmtDate(p.date):'—'}</td>
               <td style="color:var(--text3);font-size:11px">${p.fileNo}</td>
@@ -2820,6 +2857,11 @@ function renderMuhasebePage() {
               <td style="color:var(--text2)">${p.rep}</td>
               <td style="text-align:right;color:var(--green);font-weight:700">${fmtTL(p.amount)}</td>
               <td style="color:var(--text3);font-size:11px">${p.note||'—'}</td>
+              <td style="text-align:right;white-space:nowrap" onclick="event.stopPropagation()">
+                ${p.paymentId
+                  ? `<button class="btn btn-ghost btn-sm" style="font-size:10px;padding:3px 8px" onclick="editPaymentDate('${p.paymentId}','${p.date||''}','${esc(p.name)}',${p.amount})">📅 Tarihi Düzenle</button>`
+                  : `<span style="font-size:10px;color:var(--text3)" title="Bu kayıt eski sistemden geliyor, ayrı bir ödeme kaydı yok. Tarihi müşteri panelinden düzenleyin.">—</span>`}
+              </td>
             </tr>`).join('')
         }
       </tbody>
@@ -4374,7 +4416,12 @@ async function updatePayment(id){
   try{
     const res=await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'updatePayment',customerId:id,fee,prepay,paymentDateOverride:paymentDate||null,token:CU.token})});
     const d=await res.json();
-    if(!d.success){toast('Hata: '+JSON.stringify(d.error||'Kaydedilemedi'),'red');return;}
+    if(!d.success){
+      const msg=typeof d.error==='string'?d.error:(d.error&&d.error.message)||'Kaydedilemedi';
+      // Uzun açıklamalar (ör. taksit belirsizliği uyarısı) dar toast'a sığmaz
+      if(msg.length>60) alert('⚠️ '+msg); else toast('Hata: '+msg,'red');
+      return;
+    }
     await loadCustomers();
     await openPanel(id);
     if(document.getElementById('cust-tbody'))renderRows();
@@ -4680,7 +4727,11 @@ async function collectKalan(id, totalFee){
   try {
     const res = await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'updatePayment',customerId:id,fee,prepay:newPrepay,paymentDateOverride:paymentDate||null,token:CU.token})});
     const d = await res.json();
-    if(!d.success){toast('Hata: '+JSON.stringify(d.error||''),'red');return;}
+    if(!d.success){
+      const msg=typeof d.error==='string'?d.error:(d.error&&d.error.message)||'Kaydedilemedi';
+      if(msg.length>60) alert('⚠️ '+msg); else toast('Hata: '+msg,'red');
+      return;
+    }
     await loadCustomers();
     await loadAllPayments();
     await openPanel(id);
