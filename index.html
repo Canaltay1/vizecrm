@@ -933,18 +933,17 @@ function doLogout(){
   document.getElementById('lp').value='';
 }
 
-async function initApp(){
-  const av=document.getElementById('sb-av');
-  av.textContent=initials(CU.name);av.style.background=CU.color;av.style.color='#fff';
-  document.getElementById('sb-name').textContent=CU.name;
-  document.getElementById('sb-role').textContent={management:'Yönetici',sales:'Satış Temsilcisi',ops:'Operasyon Uzmanı',evrak:'Evrak Sorumlusu',randevu:'Randevu Sorumlusu'}[CU.role];
+// Kenar çubuğu menüsü + rozet sayaçları.
+// ÖNEMLİ: bu sayaçlar eskiden SADECE initApp içinde bir kez hesaplanıyordu; müşteri
+// verisi değiştiğinde güncellenmiyor, sayfa yenilenene kadar eski/eksik kalıyordu.
+// Artık her veri tazelemesinde (showPage) yeniden çiziliyor.
+function renderNavMenu(){
   const isM=CU.role==='management';
-  await loadCustomers();
-  if(isM) await loadAllPayments();
   const refundCount=isM?customers.filter(c=>c.refundStatus==='Talep Edildi').length:0;
   const cancelledCount=isM?customers.filter(c=>c.status==='İptal').length:0;
   const notInterestedCount=isM?customers.filter(c=>c.status==='İlgilenmiyor').length:0;
   const completedCount=isM?customers.filter(c=>c.status==='Tamamlandı').length:0;
+  const aktifSayfa=localStorage.getItem('vizecrm_lastpage');
   document.getElementById('sb-nav').innerHTML=`
     <div class="sb-sec">Ana Menü</div>
     ${isM?'<button class="nav-item" onclick="showPage(\'dashboard\')"><span class="nav-icon">📊</span> Dashboard</button>':''}
@@ -957,29 +956,59 @@ async function initApp(){
     ${isM?'<button class="nav-item" onclick="showPage(\'notinterested\')"><span class="nav-icon">😐</span> İlgilenmiyor'+(notInterestedCount?' <span class="nav-badge">'+notInterestedCount+'</span>':'')+'</button>':''}
     ${isM?'<div class="sb-sec">Yönetim</div><button class="nav-item" onclick="showPage(\'muhasebe\')"><span class="nav-icon">💰</span> Muhasebe</button><button class="nav-item" onclick="showPage(\'refunds\')"><span class="nav-icon">↩</span> İadeler'+(refundCount?' <span class="nav-badge">'+refundCount+'</span>':'')+'</button><button class="nav-item" onclick="showPage(\'users\')"><span class="nav-icon">🔐</span> Kullanıcılar</button>':''}
   `;
+  // Yeniden çizince 'active' sınıfı kaybolur — geri koy
+  document.querySelector('[onclick="showPage(\''+aktifSayfa+'\')"]')?.classList.add('active');
+}
+
+// Veri değiştiğinde rozetleri tazelemek için (menü DOM'u varsa)
+function refreshNavBadges(){
+  if(document.getElementById('sb-nav')) renderNavMenu();
+}
+
+async function initApp(){
+  const av=document.getElementById('sb-av');
+  av.textContent=initials(CU.name);av.style.background=CU.color;av.style.color='#fff';
+  document.getElementById('sb-name').textContent=CU.name;
+  document.getElementById('sb-role').textContent={management:'Yönetici',sales:'Satış Temsilcisi',ops:'Operasyon Uzmanı',evrak:'Evrak Sorumlusu',randevu:'Randevu Sorumlusu'}[CU.role];
+  const isM=CU.role==='management';
+  await loadCustomers();
+  if(isM) await loadAllPayments();
+  renderNavMenu();
   document.getElementById('topbar-right').innerHTML=`
     <div class="tb-search" id="tb-search-wrap"><span>🔍</span><input placeholder="Müşteri ara..." oninput="gSearch(this.value)"></div>
     <button class="btn btn-primary" onclick="openModal()">+ Yeni Müşteri</button>
   `;
-  const allowedPages=isM?['dashboard','customers','pipeline','consulate','completed','cancelled','notinterested','refunds','users','account']:['customers','pipeline','sold','account'];
+  const allowedPages=isM?['dashboard','customers','pipeline','consulate','completed','cancelled','notinterested','muhasebe','refunds','users','account']:['customers','pipeline','sold','account'];
   const savedPage=localStorage.getItem('vizecrm_lastpage');
   const startPage=(savedPage&&allowedPages.includes(savedPage))?savedPage:(isM?'dashboard':'customers');
   await showPage(startPage);
 }
 
 const PTITLES={dashboard:'Dashboard',customers:'Müşteriler',pipeline:'Pipeline',sold:'Satışlarım',consulate:'Konsolosluk Takibi',completed:'Tamamlandı',cancelled:'İptal Edilenler',notinterested:'İlgilenmiyor',muhasebe:'Muhasebe',refunds:'İadeler',users:'Kullanıcılar',account:'Hesap Ayarları'};
+// Sayfa geçişlerinde YARIŞ KORUMASI:
+// showPage async — veri çekerken (await) kullanıcı başka sayfaya tıklarsa iki showPage
+// aynı anda çalışır. Yavaş olan sonra bitip ekranı ezerse, kullanıcı tıklamadığı sayfayı
+// görür ("Muhasebe'ye bastım ama Dashboard geldi"). Her çağrıya sıra numarası veriyoruz;
+// numara eskimişse o render sessizce iptal edilir.
+let navSeq = 0;
+
 async function showPage(p){
-  document.getElementById('main-content').innerHTML='';
+  const mySeq = ++navSeq;
+  document.getElementById('main-content').innerHTML='<div style="padding:60px;text-align:center;color:var(--text3);font-size:13px">Yükleniyor...</div>';
   document.getElementById('page-title').textContent=PTITLES[p]||p;
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.querySelector('[onclick="showPage(\''+p+'\')"]')?.classList.add('active');
   localStorage.setItem('vizecrm_lastpage',p);
   // Konsolosluk filtrelerini sayfaya her yeni girişte sıfırla (eski arama takılı kalmasın)
   consSearch='';consStatus='';consCountry='';consRep='';consDay=0;
+  soldSearch='';
   const searchWrap=document.getElementById('tb-search-wrap');
   if(searchWrap){searchWrap.style.display=(p==='dashboard')?'none':'';const si=searchWrap.querySelector('input');if(si)si.value='';}
   if(p==='dashboard'||p==='customers'||p==='pipeline'||p==='refunds'||p==='consulate'||p==='completed'||p==='cancelled'||p==='notinterested'||p==='muhasebe')await loadCustomers();
+  if(mySeq!==navSeq) return; // kullanıcı başka sayfaya geçti — bu render'ı çöpe at
   if((p==='dashboard'||p==='muhasebe')&&CU.role==='management') await loadAllPayments();
+  if(mySeq!==navSeq) return;
+  refreshNavBadges(); // veri tazelendi, kenar çubuğu sayaçları da güncellensin
   await ({dashboard:renderDash,customers:renderCusts,pipeline:renderPipeline,sold:renderSold,consulate:renderConsulate,completed:renderCompleted,cancelled:renderCancelled,notinterested:renderNotInterested,muhasebe:renderMuhasebe,refunds:renderRefunds,users:renderUsers,account:renderAccount})[p]?.();
 }
 function gSearch(q){
@@ -1003,6 +1032,12 @@ function gSearch(q){
     // Konsolosluk Takibi sayfası — üstteki genel arama, sayfanın kendi arama filtresine bağlanır
     consSearch=q;
     renderConsulate();
+  }else if(document.getElementById('sold-body')){
+    // Satışlarım sayfası — üstteki arama kutusu burada da çalışsın
+    soldSearch=q;
+    const si=document.getElementById('sold-search');
+    if(si) si.value=q;
+    renderSoldBody();
   }
 }
 
@@ -2018,19 +2053,48 @@ function renderRows(){
 const KSTAGES=['Yeni Kayıt','Sonra Ara','Ulaşılamıyor','İlgileniyor','İletişime Geçildi','Ödeme Alındı','Belge Bekleniyor','Belgeler Tamam','Randevu Aranıyor','Randevu Alındı','Randevu Evrakları Hazırlanıyor','Randevu Evrakları Tamamlandı','Başvuru Yapıldı','Sonuç Bekleniyor','Tamamlandı'];
 const KCOLS={'Yeni Kayıt':'#6B7280','Sonra Ara':'#2563EB','Ulaşılamıyor':'#7C3AED','İlgileniyor':'#0D9488','İletişime Geçildi':'#2563EB','Ödeme Alındı':'#059669','Belge Bekleniyor':'#D97706','Belgeler Tamam':'#059669','Randevu Aranıyor':'#D97706','Randevu Alındı':'#2563EB','Randevu Evrakları Hazırlanıyor':'#D97706','Randevu Evrakları Tamamlandı':'#059669','Başvuru Yapıldı':'#7C3AED','Sonuç Bekleniyor':'#D97706','Tamamlandı':'#059669'};
 
+let soldCustomers=[];
+let soldSearch='';
+
 async function renderSold(){
   document.getElementById('main-content').innerHTML=`
   <div style="padding:8px 0 16px">
     <div style="font-size:12px;color:var(--text3);margin-bottom:12px">Satışını tamamladığın müşteriler — sadece görüntüleme, değişiklik yapamazsın.</div>
+    <div class="filter-bar" style="margin-bottom:12px">
+      <div class="sw"><input class="si" id="sold-search" placeholder="İsim, telefon veya dosya no..." value="${esc(soldSearch)}" oninput="soldSearchChange(this.value)"></div>
+    </div>
     <div id="sold-body"><div style="color:var(--text3);font-size:13px;padding:20px 0">Yükleniyor...</div></div>
   </div>`;
   try{
     const res=await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'getSoldCustomers',token:CU.token})});
     const d=await res.json();
-    const list=d.customers||[];
+    soldCustomers=d.customers||[];
+    renderSoldBody();
+  }catch(e){
     const tb=document.getElementById('sold-body');
-    if(!list.length){tb.innerHTML='<div style="color:var(--text3);font-size:13px;padding:20px 0">Henüz satışı tamamlanmış müşteri yok.</div>';return;}
-    tb.innerHTML=`
+    if(tb) tb.innerHTML='<div style="color:var(--red);font-size:13px">Yüklenemedi, bağlantı hatası.</div>';
+  }
+}
+
+function soldSearchChange(q){
+  soldSearch=q;
+  renderSoldBody();
+}
+
+// Veriyi yeniden ÇEKMEDEN filtreleyip basar — arama her tuşta sunucuya gitmez
+function renderSoldBody(){
+  const tb=document.getElementById('sold-body');
+  if(!tb) return;
+  const sq=(soldSearch||'').toLowerCase().trim();
+  const list=soldCustomers.filter(c=>{
+    if(!sq) return true;
+    return (c.full_name&&c.full_name.toLowerCase().includes(sq))
+        || (c.file_number&&c.file_number.toLowerCase().includes(sq))
+        || (c.phone&&c.phone.includes(sq));
+  });
+  if(!soldCustomers.length){tb.innerHTML='<div style="color:var(--text3);font-size:13px;padding:20px 0">Henüz satışı tamamlanmış müşteri yok.</div>';return;}
+  if(!list.length){tb.innerHTML='<div style="color:var(--text3);font-size:13px;padding:20px 0">Aramanıza uyan müşteri bulunamadı.</div>';return;}
+  tb.innerHTML=`
     <div style="overflow-x:auto">
     <table class="tbl" style="min-width:860px">
       <thead>
@@ -2068,11 +2132,9 @@ async function renderSold(){
         }).join('')}
       </tbody>
     </table>
-    </div>`;
-  }catch(e){
-    document.getElementById('sold-body').innerHTML='<div style="color:var(--red);font-size:13px">Yüklenemedi, bağlantı hatası.</div>';
-  }
+    </div>`
 }
+
 
 function renderPipeline(){
   const mc=document.getElementById('main-content');
