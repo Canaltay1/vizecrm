@@ -2753,13 +2753,7 @@ function getCountryBreakdown(items) {
 
 function renderMuhasebePage() {
   const { items, giderList, custExpList, totalGelir, totalGider, totalCustExp, totalIade, bekleyenList, totalBekleyen, uniqueCustCount } = getMuhData(muhPeriod);
-  // Müşteri giderlerinin kategori kırılımı — "bu ay konsolosluk harçlarına ne kadar gitti"
-  const custExpCatMap = {};
-  custExpList.forEach(e=>{
-    const cat=e.category||'Diğer';
-    custExpCatMap[cat]=(custExpCatMap[cat]||0)+Number(e.amount||0);
-  });
-  const custExpCatRows = Object.entries(custExpCatMap).sort((a,b)=>b[1]-a[1]);
+  // Not: müşteri giderlerinin kategori kırılımı artık detay penceresinde (showCustExpDetail) gösteriliyor.
   // Genel giderlerin kategori kırılımı
   const giderCatMap = {};
   giderList.forEach(e=>{
@@ -2801,7 +2795,7 @@ function renderMuhasebePage() {
       <div class="stat-val" style="color:var(--red)">${fmtTL(totalGider)}</div>
       <div class="stat-label">Genel Gider · ${giderList.length} kayıt</div>
     </div>
-    <div class="stat-card c-red" style="cursor:pointer" onclick="document.getElementById('muh-custexp').scrollIntoView({behavior:'smooth'})">
+    <div class="stat-card c-red" style="cursor:pointer" onclick="showCustExpDetail()">
       <div class="stat-icon" style="background:var(--red-bg);color:var(--red)">💸</div>
       <div class="stat-val" style="color:var(--red)">${fmtTL(totalCustExp)}</div>
       <div class="stat-label">Müşteri Giderleri · ${custExpList.length} kayıt</div>
@@ -2976,42 +2970,6 @@ function renderMuhasebePage() {
         }
       </tbody>
     </table>
-  </div>
-
-  <div class="tbl-wrap" id="muh-custexp" style="margin-top:20px">
-    <div class="tbl-toolbar">
-      <div class="tbl-label">💸 Müşteri Giderleri</div>
-      <div style="display:flex;align-items:center;gap:8px">
-        <span style="font-size:11px;color:var(--text2)">${custExpList.length} kayıt · ${fmtTL(totalCustExp)}</span>
-      </div>
-    </div>
-    ${custExpCatRows.length?`<div style="padding:10px 14px;border-bottom:1px solid var(--border);display:flex;gap:8px;flex-wrap:wrap">
-      ${custExpCatRows.map(([cat,tut])=>`<span style="font-size:11px;background:var(--surface2);border-radius:20px;padding:3px 10px"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${CUST_EXP_CAT_COLOR[cat]||'#6B7280'};margin-right:5px"></span>${esc(cat)}: <b>${fmtTL(tut)}</b></span>`).join('')}
-    </div>`:''}
-    <table class="tbl">
-      <thead><tr><th>Tarih</th><th>Dosya No</th><th>Müşteri</th><th>Kategori</th><th>Açıklama</th><th style="text-align:right">Tutar</th><th>Kaydeden</th><th></th></tr></thead>
-      <tbody>
-        ${custExpList.length===0?'<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text3)">Bu dönemde müşteri gideri yok</td></tr>':
-          custExpList.slice().sort((a,b)=>((b.expense_date||b.created_at||'')+'').localeCompare((a.expense_date||a.created_at||'')+'')).map(e=>{
-            const c=customers.find(x=>x.id===e.customer_file_number);
-            const expDate=e.expense_date||(e.created_at||'').slice(0,10);
-            const cat=e.category||'Diğer';
-            return `<tr onclick="openPanel('${e.customer_file_number}')" style="cursor:pointer" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
-              <td style="color:var(--text2);white-space:nowrap">${expDate?fmtDate(expDate):'—'}</td>
-              <td style="color:var(--text3);font-size:11px">${e.customer_file_number}</td>
-              <td style="font-weight:600">${c?esc(c.name):'—'}</td>
-              <td><span style="font-size:9px;font-weight:700;color:#fff;background:${CUST_EXP_CAT_COLOR[cat]||'#6B7280'};padding:2px 7px;border-radius:20px">${esc(cat)}</span></td>
-              <td style="color:var(--text3);font-size:11px">${esc(e.description)||'—'}</td>
-              <td style="text-align:right;color:var(--red);font-weight:700">${fmtTL(e.amount)}</td>
-              <td style="color:var(--text3);font-size:11px">${esc(e.created_by)||'—'}</td>
-              <td style="text-align:right;white-space:nowrap" onclick="event.stopPropagation()">
-                <button class="btn btn-ghost btn-sm" style="font-size:10px;padding:3px 8px" onclick="editCustExpense('${e.id}')">✏️ Düzenle</button>
-              </td>
-            </tr>`;
-          }).join('')
-        }
-      </tbody>
-    </table>
   </div>`;
 }
 
@@ -3043,6 +3001,125 @@ function renderProfitPanel(c, exps){
       +'<div style="font-size:10px;color:var(--text3);margin-top:8px">Genel giderler (kira, maaş vb.) bu hesaba dahil değildir.</div>'
     +'</div>'
     +'</div>';
+}
+
+// Müşteri giderleri detay penceresi — arama + temsilci + kategori filtreleriyle.
+// Dönem filtresi Muhasebe ekranındaki seçime bağlıdır (aynı custExpList kullanılır).
+function showCustExpDetail(){
+  const { custExpList } = getMuhData(muhPeriod);
+  // Her gideri müşterisi ve temsilcisiyle zenginleştir
+  const all = custExpList.map(e=>{
+    const c = customers.find(x=>x.id===e.customer_file_number);
+    return {
+      ...e,
+      _name: c ? c.name : '—',
+      _rep: c ? (c.rep||'—') : '—',
+      _status: c ? c.status : '—',
+      _date: e.expense_date || (e.created_at||'').slice(0,10),
+      _cat: e.category || 'Diğer',
+    };
+  }).sort((a,b)=>(b._date||'').localeCompare(a._date||''));
+
+  const reps = [...new Set(all.map(e=>e._rep).filter(r=>r&&r!=='—'))].sort();
+  const cats = [...new Set(all.map(e=>e._cat))].sort();
+
+  const m=document.createElement('div');
+  m.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+  m.addEventListener('click',e=>{if(e.target===m)m.remove();});
+
+  function buildRows(list){
+    if(!list.length) return '<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text3)">Kayıt bulunamadı</td></tr>';
+    return list.map(e=>`<tr class="ce-row" data-cust="${e.customer_file_number}" style="cursor:pointer;border-bottom:1px solid var(--border)">
+      <td style="padding:8px 12px;white-space:nowrap;color:var(--text2);font-size:11px">${e._date?fmtDate(e._date):'—'}</td>
+      <td style="padding:8px 12px;font-size:10px;color:var(--text3)">${e.customer_file_number}</td>
+      <td style="padding:8px 12px;font-weight:700;font-size:12px">${esc(e._name)}</td>
+      <td style="padding:8px 12px;font-size:11px;color:var(--text2)">${esc(e._rep)}</td>
+      <td style="padding:8px 12px"><span style="font-size:9px;font-weight:700;color:#fff;background:${CUST_EXP_CAT_COLOR[e._cat]||'#6B7280'};padding:2px 7px;border-radius:20px">${esc(e._cat)}</span></td>
+      <td style="padding:8px 12px;font-size:11px;color:var(--text3)">${esc(e.description)||'—'}</td>
+      <td style="padding:8px 12px;text-align:right;font-weight:700;color:var(--red);white-space:nowrap">${fmtTL(e.amount)}</td>
+      <td style="padding:8px 12px;text-align:right;white-space:nowrap">
+        <button class="btn btn-ghost btn-sm ce-edit" data-id="${e.id}" style="font-size:10px;padding:3px 8px">✏️</button>
+      </td>
+    </tr>`).join('');
+  }
+
+  function reFilter(){
+    const sq=(document.getElementById('ce-search').value||'').toLowerCase().trim();
+    const repF=document.getElementById('ce-rep-f').value;
+    const catF=document.getElementById('ce-cat-f').value;
+    const f=all.filter(e=>{
+      if(sq && !(String(e._name).toLowerCase().includes(sq) || String(e.customer_file_number).toLowerCase().includes(sq) || String(e.description||'').toLowerCase().includes(sq))) return false;
+      if(repF && e._rep!==repF) return false;
+      if(catF && e._cat!==catF) return false;
+      return true;
+    });
+    const top=f.reduce((s,e)=>s+Number(e.amount||0),0);
+    document.getElementById('ce-tbody').innerHTML=buildRows(f);
+    document.getElementById('ce-summary').innerHTML=`<b>${f.length}</b> kayıt · <b style="color:var(--red)">${fmtTL(top)}</b>${f.length!==all.length?` <span style="color:var(--text3)">(toplam ${all.length} içinden)</span>`:''}`;
+    bindRows();
+  }
+
+  function bindRows(){
+    m.querySelectorAll('.ce-row').forEach(r=>{
+      r.onclick=ev=>{ if(ev.target.closest('.ce-edit'))return; m.remove(); openPanel(r.dataset.cust); };
+      r.onmouseover=()=>r.style.background='var(--surface2)';
+      r.onmouseout=()=>r.style.background='';
+    });
+    m.querySelectorAll('.ce-edit').forEach(b=>{
+      b.onclick=ev=>{ ev.stopPropagation(); m.remove(); editCustExpense(b.dataset.id); };
+    });
+  }
+
+  const toplam=all.reduce((s,e)=>s+Number(e.amount||0),0);
+  // Kategori kırılımı — "bu dönemde konsolosluk harçlarına ne kadar gitti"
+  const catMap={};
+  all.forEach(e=>{ catMap[e._cat]=(catMap[e._cat]||0)+Number(e.amount||0); });
+  const catRows=Object.entries(catMap).sort((a,b)=>b[1]-a[1]);
+  m.innerHTML=`<div style="background:var(--bg);border-radius:14px;max-width:1100px;width:100%;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+    <div style="padding:20px 22px 0;display:flex;justify-content:space-between;align-items:flex-start">
+      <div>
+        <div style="font-size:17px;font-weight:700">💸 Müşteri Giderleri</div>
+        <div id="ce-summary" style="font-size:12px;color:var(--text2);margin-top:3px"><b>${all.length}</b> kayıt · <b style="color:var(--red)">${fmtTL(toplam)}</b></div>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="this.closest('div[style*=fixed]').remove()" style="font-size:18px;padding:2px 10px">✕</button>
+    </div>
+    ${catRows.length?`<div style="padding:12px 22px 0;display:flex;gap:7px;flex-wrap:wrap">
+      ${catRows.map(([cat,tut])=>`<span style="font-size:11px;background:var(--surface2);border-radius:20px;padding:3px 10px"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${CUST_EXP_CAT_COLOR[cat]||'#6B7280'};margin-right:5px"></span>${esc(cat)}: <b>${fmtTL(tut)}</b> <span style="color:var(--text3)">%${toplam>0?Math.round(tut/toplam*100):0}</span></span>`).join('')}
+    </div>`:''}
+    <div style="padding:14px 22px;display:flex;gap:8px;flex-wrap:wrap;border-bottom:1px solid var(--border)">
+      <div class="sw"><input class="si" id="ce-search" placeholder="Müşteri, dosya no veya açıklama..." style="min-width:220px"></div>
+      <select class="sel" id="ce-rep-f"><option value="">Tüm temsilciler</option>${reps.map(r=>`<option>${esc(r)}</option>`).join('')}</select>
+      <select class="sel" id="ce-cat-f"><option value="">Tüm kategoriler</option>${cats.map(c=>`<option>${esc(c)}</option>`).join('')}</select>
+      <button class="btn btn-ghost btn-sm" id="ce-clear">✕ Temizle</button>
+    </div>
+    <div style="overflow:auto;flex:1">
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr style="background:var(--surface2);position:sticky;top:0">
+          <th style="padding:9px 12px;text-align:left;font-weight:600;color:var(--text2)">Tarih</th>
+          <th style="padding:9px 12px;text-align:left;font-weight:600;color:var(--text2)">Dosya No</th>
+          <th style="padding:9px 12px;text-align:left;font-weight:600;color:var(--text2)">Müşteri</th>
+          <th style="padding:9px 12px;text-align:left;font-weight:600;color:var(--text2)">Temsilci</th>
+          <th style="padding:9px 12px;text-align:left;font-weight:600;color:var(--text2)">Kategori</th>
+          <th style="padding:9px 12px;text-align:left;font-weight:600;color:var(--text2)">Açıklama</th>
+          <th style="padding:9px 12px;text-align:right;font-weight:600;color:var(--text2)">Tutar</th>
+          <th></th>
+        </tr></thead>
+        <tbody id="ce-tbody">${buildRows(all)}</tbody>
+      </table>
+    </div>
+  </div>`;
+  document.body.appendChild(m);
+  ['ce-search','ce-rep-f','ce-cat-f'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el) el.addEventListener(id==='ce-search'?'input':'change',reFilter);
+  });
+  document.getElementById('ce-clear').onclick=()=>{
+    document.getElementById('ce-search').value='';
+    document.getElementById('ce-rep-f').value='';
+    document.getElementById('ce-cat-f').value='';
+    reFilter();
+  };
+  bindRows();
 }
 
 // ─── GİDER DÜZENLEME ───
