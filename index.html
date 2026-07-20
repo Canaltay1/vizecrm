@@ -1846,18 +1846,25 @@ async function bulkTransfer(){
   if(!bulkSelected.size){toast('Müşteri seçin','red');return;}
   const ids=[...bulkSelected];
   if(!confirm(ids.length+' müşteri "'+repName+'" adlı temsilciye transfer edilecek. Devam?'))return;
-  let ok=0;
+  let ok=0; let sonHata='';
   for(const id of ids){
     try{
       const r=await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'transferCustomer',customerId:id,assignTo:repName,token:CU.token})});
       const d=await r.json();
       if(d.success)ok++;
-    }catch(e){}
+      else sonHata=(d.error&&d.error.message)||d.error||'bilinmeyen hata';
+    }catch(e){sonHata='bağlantı hatası';}
   }
   clearBulkSelection();
   await loadCustomers();
   renderRows();
-  toast('✓ '+ok+'/'+ids.length+' müşteri transfer edildi','green');
+  if(ok===ids.length){
+    toast('✓ '+ok+' müşteri '+repName+' adlı temsilciye transfer edildi','green');
+  }else if(ok>0){
+    toast('⚠️ '+ok+'/'+ids.length+' transfer edildi. Kalan: '+sonHata,'amber');
+  }else{
+    toast('❌ Transfer başarısız: '+sonHata,'red');
+  }
 }
 async function bulkAddNote(){
   const text=(document.getElementById('bulk-note-inp')?.value||'').trim();
