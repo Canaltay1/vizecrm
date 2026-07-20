@@ -863,18 +863,25 @@ function resetIdleTimer(){
 }
 
 // PERFORMANS TAKİBİ — "aktif süre" ölçümü.
-// Gerçek etkileşim (fare/klavye) olduğunda, en fazla 2 dakikada bir sunucuya "hâlâ aktifim"
-// sinyali gönderilir. Böylece sekmeyi açık unutup giden kişi "aktif" sayılmaz — süre
-// gerçek kullanımı yansıtır. Sık istek atmamak için 2 dakika kısıtı var.
+// Gerçek etkileşim (fare/klavye) olduğunda VE düzenli aralıklarla sunucuya "hâlâ aktifim"
+// sinyali gönderilir. Sekmeyi açık unutup giden kişi idle-timeout ile düşürülür (30 dk),
+// o yüzden süre gerçek kullanımı yansıtır.
 let lastHeartbeat=0;
 const HEARTBEAT_INTERVAL_MS=2*60*1000;
-function sendHeartbeat(){
+function sendHeartbeat(force){
   if(!CU||!CU.token)return;
   const now=Date.now();
-  if(now-lastHeartbeat<HEARTBEAT_INTERVAL_MS)return;
+  if(!force && now-lastHeartbeat<HEARTBEAT_INTERVAL_MS)return;
   lastHeartbeat=now;
   fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'heartbeat',token:CU.token})}).catch(()=>{});
 }
+
+// Düzenli heartbeat: kullanıcı sadece okuyor/düşünüyor olsa bile (fare hareketi olmasa bile)
+// aktif olduğu sürece süre işlemeye devam etsin. İdle-timeout zaten gerçekten gideni düşürür.
+let heartbeatTimer=setInterval(()=>{
+  // Sekme arka plandaysa sayma (kullanıcı başka yerde) — görünür sekmede aktif say
+  if(CU && document.visibilityState==='visible') sendHeartbeat(true);
+}, HEARTBEAT_INTERVAL_MS);
 
 ['mousemove','keydown','click','scroll','touchstart'].forEach(evt=>{
   document.addEventListener(evt, ()=>{ if(CU){ resetIdleTimer(); sendHeartbeat(); } });
@@ -888,6 +895,7 @@ async function restoreSession(){
     const d=await res.json();
     if(!res.ok||!d.user){localStorage.removeItem('vizecrm_token');return false;}
     CU=mapUser(d.user,token);
+    sendHeartbeat(true); // restore sonrası oturum kaydını garanti et
     return true;
   }catch(e){
     return false;
@@ -2597,16 +2605,25 @@ async function renderPerformance(){
   const TIP_KISA={asama_degisikligi:'Aşama',not_ekleme:'Not',arama_kaydi:'Arama',odeme_degisikligi:'Ödeme',fatura_durumu:'Fatura',odeme_kaydi_duzenleme:'Ödeme Düz.',musteri_gideri_duzenleme:'Gider',genel_gider_duzenleme:'Gider',musteri_silme:'Silme',sifre_sifirlama:'Şifre'};
 
   document.getElementById('main-content').innerHTML=`
-  <div style="margin-bottom:16px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-    <span style="font-size:12px;color:var(--text2)">Dönem:</span>
-    <input type="date" class="fi2" value="${perfFrom}" style="padding:6px 8px;font-size:12px" onchange="perfFrom=this.value;renderPerformance()">
-    <span style="color:var(--text3)">–</span>
-    <input type="date" class="fi2" value="${perfTo}" style="padding:6px 8px;font-size:12px" onchange="perfTo=this.value;renderPerformance()">
-    <button class="btn btn-ghost btn-sm" onclick="perfQuick('month')">Bu Ay</button>
-    <button class="btn btn-ghost btn-sm" onclick="perfQuick('week')">Bu Hafta</button>
-    <button class="btn btn-ghost btn-sm" onclick="perfQuick('today')">Bugün</button>
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:16px">
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+      <span style="font-size:12px;color:var(--text2);font-weight:600">📅 Dönem:</span>
+      <input type="date" class="fi2" value="${perfFrom}" style="padding:6px 8px;font-size:12px" onchange="perfFrom=this.value;renderPerformance()">
+      <span style="color:var(--text3)">–</span>
+      <input type="date" class="fi2" value="${perfTo}" style="padding:6px 8px;font-size:12px" onchange="perfTo=this.value;renderPerformance()">
+      <span style="font-size:11px;color:var(--text3);margin-left:4px" id="perf-range-label"></span>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button class="btn btn-ghost btn-sm" onclick="perfQuick('today')">Bugün</button>
+      <button class="btn btn-ghost btn-sm" onclick="perfQuick('yesterday')">Dün</button>
+      <button class="btn btn-ghost btn-sm" onclick="perfQuick('week')">Bu Hafta</button>
+      <button class="btn btn-ghost btn-sm" onclick="perfQuick('last7')">Son 7 Gün</button>
+      <button class="btn btn-ghost btn-sm" onclick="perfQuick('month')">Bu Ay</button>
+      <button class="btn btn-ghost btn-sm" onclick="perfQuick('last30')">Son 30 Gün</button>
+      <button class="btn btn-ghost btn-sm" onclick="perfQuick('lastmonth')">Geçen Ay</button>
+    </div>
   </div>
-  <div style="font-size:12px;color:var(--text3);margin-bottom:12px">💡 "Aktif süre" gerçek etkileşime dayalıdır (fare/klavye); sekme açık unutulursa süreye eklenmez.</div>
+  <div style="font-size:12px;color:var(--text3);margin-bottom:12px">💡 "Aktif süre" gerçek etkileşime dayalıdır (fare/klavye ve açık sekme); sekme arka planda veya kişi giderse süre işlemez.</div>
   <div class="tbl-wrap" style="overflow-x:auto">
     <table class="tbl" style="min-width:820px">
       <thead><tr>
@@ -2622,8 +2639,8 @@ async function renderPerformance(){
         rapor.map(u=>{
           const dagilim=Object.entries(u.actionsByType||{}).sort((a,b)=>b[1]-a[1]).map(([t,n])=>`<span style="font-size:10px;background:var(--surface2);border-radius:20px;padding:1px 7px;margin-right:3px;white-space:nowrap">${esc(TIP_KISA[t]||t)}: ${n}</span>`).join('');
           const aktif=u.loginCount>0;
-          return `<tr style="${!aktif?'opacity:0.5':''}">
-            <td style="font-weight:600">${esc(u.name)}</td>
+          return `<tr onclick="showUserActivity('${u.userId}','${esc(u.name)}')" style="cursor:pointer;${!aktif?'opacity:0.5':''}" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
+            <td style="font-weight:600">${esc(u.name)} <span style="font-size:14px;color:var(--text3)">›</span></td>
             <td style="font-size:11px;color:var(--text2)">${esc(ROLE_LABELS[u.role]||u.role)}</td>
             <td style="text-align:center">${u.loginCount||'<span style="color:var(--red)">0</span>'}</td>
             <td style="text-align:center;font-size:12px">${girisSaati(u.firstLoginTime)}</td>
@@ -2635,15 +2652,25 @@ async function renderPerformance(){
       </tbody>
     </table>
   </div>
-  <div style="margin-top:12px"><button class="btn btn-ghost btn-sm" onclick="exportPerformance()">📥 Excel'e Aktar</button></div>`;
+  <div style="margin-top:12px;display:flex;justify-content:space-between;align-items:center">
+    <span style="font-size:11px;color:var(--text3)">Bir kullanıcıya tıklayarak tüm işlem geçmişini görebilirsiniz.</span>
+    <button class="btn btn-ghost btn-sm" onclick="exportPerformance()">📥 Excel'e Aktar</button>
+  </div>`;
   window._perfData=rapor;
+  const lbl=document.getElementById('perf-range-label');
+  if(lbl){const gun=Math.round((new Date(perfTo)-new Date(perfFrom))/86400000)+1;lbl.textContent=gun+' günlük dönem';}
 }
 
 function perfQuick(tip){
   const now=new Date();
-  if(tip==='month'){perfFrom=new Date(now.getFullYear(),now.getMonth(),1).toISOString().slice(0,10);perfTo=now.toISOString().slice(0,10);}
-  else if(tip==='week'){const gun=now.getDay()||7;perfFrom=new Date(now.getTime()-(gun-1)*86400000).toISOString().slice(0,10);perfTo=now.toISOString().slice(0,10);}
-  else if(tip==='today'){perfFrom=now.toISOString().slice(0,10);perfTo=perfFrom;}
+  const iso=d=>d.toISOString().slice(0,10);
+  if(tip==='today'){perfFrom=iso(now);perfTo=perfFrom;}
+  else if(tip==='yesterday'){const y=new Date(now.getTime()-86400000);perfFrom=iso(y);perfTo=perfFrom;}
+  else if(tip==='week'){const gun=now.getDay()||7;perfFrom=iso(new Date(now.getTime()-(gun-1)*86400000));perfTo=iso(now);}
+  else if(tip==='last7'){perfFrom=iso(new Date(now.getTime()-6*86400000));perfTo=iso(now);}
+  else if(tip==='month'){perfFrom=iso(new Date(now.getFullYear(),now.getMonth(),1));perfTo=iso(now);}
+  else if(tip==='last30'){perfFrom=iso(new Date(now.getTime()-29*86400000));perfTo=iso(now);}
+  else if(tip==='lastmonth'){perfFrom=iso(new Date(now.getFullYear(),now.getMonth()-1,1));perfTo=iso(new Date(now.getFullYear(),now.getMonth(),0));}
   renderPerformance();
 }
 
@@ -4015,6 +4042,84 @@ function showImpersonationBar(){
     +'<button onclick="stopImpersonation()" style="background:#fff;color:#7C3AED;border:none;border-radius:6px;padding:5px 14px;font-size:12px;font-weight:700;cursor:pointer">✕ Görüntülemeyi Kapat</button>';
   document.body.appendChild(bar);
   document.body.style.paddingTop='40px';
+}
+
+// Bir kullanıcının TÜM işlem geçmişi — Performans tablosunda isme tıklayınca açılır.
+async function showUserActivity(userId, userName){
+  const m=document.createElement('div');
+  m.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+  m.addEventListener('click',e=>{if(e.target===m)m.remove();});
+  m.innerHTML='<div style="background:var(--bg);border-radius:14px;max-width:820px;width:100%;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.3)"><div style="padding:40px;text-align:center;color:var(--text3)">Yükleniyor...</div></div>';
+  document.body.appendChild(m);
+
+  let actions=[], sessions=[];
+  try{
+    const res=await fetch(EDGE_FUNCTION_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'getUserActivity',customerId:userId,dateFrom:perfFrom,dateTo:perfTo,token:CU.token})});
+    const d=await res.json();
+    if(d.error){m.querySelector('div>div').innerHTML='<div style="padding:40px;text-align:center;color:var(--red)">İşlem geçmişi okunamadı.</div>';return;}
+    actions=d.actions||[]; sessions=d.sessions||[];
+  }catch(e){m.querySelector('div>div').innerHTML='<div style="padding:40px;text-align:center;color:var(--red)">Bağlantı hatası.</div>';return;}
+
+  const TIP_ETIKET={odeme_degisikligi:'💰 Ödeme Değişikliği',fatura_durumu:'📄 Fatura Durumu',odeme_kaydi_duzenleme:'💵 Ödeme Kaydı',musteri_gideri_duzenleme:'💸 Müşteri Gideri',genel_gider_duzenleme:'🧾 Genel Gider',sifre_sifirlama:'🔑 Şifre Sıfırlama',musteri_silme:'🗑️ Müşteri Silme',asama_degisikligi:'🔄 Aşama Değişikliği',not_ekleme:'📝 Not Ekleme',arama_kaydi:'📞 Arama Kaydı',kullanici_goruntuleme:'👁 Kullanıcı Görüntüleme'};
+  const TIP_RENK={odeme_degisikligi:'#2563EB',fatura_durumu:'#7C3AED',odeme_kaydi_duzenleme:'#059669',musteri_gideri_duzenleme:'#DC2626',genel_gider_duzenleme:'#D97706',sifre_sifirlama:'#DB2777',musteri_silme:'#DC2626',asama_degisikligi:'#0891B2',not_ekleme:'#65A30D',arama_kaydi:'#4F46E5',kullanici_goruntuleme:'#7C3AED'};
+
+  function detayOzet(log){
+    if(!log.detail) return '';
+    let d; try{ d=JSON.parse(log.detail); }catch(_e){ return esc(log.detail); }
+    if(log.action_type==='odeme_degisikligi') return `${esc(d.musteri||'')}: ₺${(d.eski_odeme||0).toLocaleString('tr-TR')} → ₺${(d.yeni_odeme||0).toLocaleString('tr-TR')}`;
+    if(log.action_type==='asama_degisikligi') return `${esc(d.musteri||'')} → ${esc(d.yeni_asama||'')}`;
+    if(log.action_type==='arama_kaydi') return `${esc(d.musteri||'')}${d.sonuc?' ('+esc(d.sonuc)+')':''}`;
+    if(log.action_type==='not_ekleme') return esc(d.musteri||'');
+    if(log.action_type==='fatura_durumu') return d.fatura_kesildi?'Kesildi':'Kesilmedi';
+    if(log.action_type==='musteri_silme') return `${esc(d.full_name||'')} (₺${(d.prepayment||0).toLocaleString('tr-TR')})`;
+    if(log.action_type==='kullanici_goruntuleme') return esc(d.goruntulenen||'');
+    return Object.entries(d).map(([k,v])=>`${esc(k)}: ${esc(String(v))}`).join(', ');
+  }
+
+  // İşlem türü özeti (üstte rozetler)
+  const tipSayim={};
+  actions.forEach(a=>{ tipSayim[a.action_type]=(tipSayim[a.action_type]||0)+1; });
+  const ozetRozet=Object.entries(tipSayim).sort((a,b)=>b[1]-a[1]).map(([t,n])=>`<span style="font-size:11px;background:var(--surface2);border-radius:20px;padding:3px 10px"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${TIP_RENK[t]||'#6B7280'};margin-right:5px"></span>${esc(TIP_ETIKET[t]||t)}: <b>${n}</b></span>`).join('');
+
+  // Oturum özeti
+  const toplamDk=sessions.reduce((s,ses)=>{
+    const login=new Date(ses.login_at), last=new Date(ses.last_activity_at||ses.login_at);
+    return s+Math.max(0,Math.round((last-login)/60000));
+  },0);
+
+  m.innerHTML=`<div style="background:var(--bg);border-radius:14px;max-width:820px;width:100%;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+    <div style="padding:20px 22px 0;display:flex;justify-content:space-between;align-items:flex-start">
+      <div>
+        <div style="font-size:17px;font-weight:700">${esc(userName)} — İşlem Geçmişi</div>
+        <div style="font-size:12px;color:var(--text2);margin-top:3px">${fmtDate(perfFrom)} – ${fmtDate(perfTo)} · <b>${actions.length}</b> işlem · <b>${sessions.length}</b> giriş · ${Math.floor(toplamDk/60)}s ${toplamDk%60}dk aktif</div>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="this.closest('div[style*=fixed]').remove()" style="font-size:18px;padding:2px 10px">✕</button>
+    </div>
+    ${ozetRozet?`<div style="padding:12px 22px 0;display:flex;gap:7px;flex-wrap:wrap">${ozetRozet}</div>`:''}
+    <div style="overflow:auto;flex:1;padding:16px 22px">
+      ${actions.length===0?'<div style="text-align:center;padding:30px;color:var(--text3)">Bu dönemde işlem kaydı yok</div>':
+      `<div style="position:relative">
+        ${actions.map(a=>`<div style="display:flex;gap:12px;padding:8px 0;border-bottom:1px solid var(--border)">
+          <div style="font-size:11px;color:var(--text3);white-space:nowrap;min-width:110px;padding-top:2px">${fmtDT(a.created_at)}</div>
+          <div style="flex:1">
+            <span style="font-size:10px;font-weight:700;color:#fff;background:${TIP_RENK[a.action_type]||'#6B7280'};padding:2px 8px;border-radius:20px">${esc(TIP_ETIKET[a.action_type]||a.action_type)}</span>
+            ${detayOzet(a)?`<span style="font-size:12px;color:var(--text2);margin-left:8px">${detayOzet(a)}</span>`:''}
+            ${a.target_id?`<div style="font-size:10px;color:var(--text3);margin-top:2px">dosya: ${esc(a.target_id)}</div>`:''}
+          </div>
+        </div>`).join('')}
+      </div>`}
+    </div>
+    ${sessions.length?`<div style="padding:12px 22px;border-top:1px solid var(--border);background:var(--surface2)">
+      <div style="font-size:11px;font-weight:600;color:var(--text2);margin-bottom:6px">🕐 Giriş Oturumları (${sessions.length})</div>
+      <div style="display:flex;flex-direction:column;gap:3px;max-height:120px;overflow:auto">
+        ${sessions.map(ses=>{
+          const login=new Date(ses.login_at), last=new Date(ses.last_activity_at||ses.login_at);
+          const dk=Math.max(0,Math.round((last-login)/60000));
+          return `<div style="font-size:11px;color:var(--text2);display:flex;justify-content:space-between"><span>${fmtDT(ses.login_at)}</span><span style="color:var(--text3)">${dk} dk aktif</span></div>`;
+        }).join('')}
+      </div>
+    </div>`:''}
+  </div>`;
 }
 
 async function migratePasswords(){
